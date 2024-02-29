@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
-def load(path, scaler, test_size=0.2):
+def load(path, scaler, val_size=0.1, test_size=0.2):
     responses = jnp.load(os.path.join(path, 'data_nonrandom_responses.npz'))['arr_0'].astype(float)
     responses = responses[..., None]
     responses = jnp.log(responses + 1)
@@ -19,7 +19,10 @@ def load(path, scaler, test_size=0.2):
     elif scaler != 'none':
         raise ValueError('Unknown scaler')
 
-    return train_test_split(responses, particles, test_size=test_size, shuffle=False)
+    r_train, r_test, p_train, p_test = train_test_split(responses, particles, test_size=test_size, shuffle=False)
+    r_train, r_val, p_train, p_val = train_test_split(r_train, p_train, test_size=val_size / (1 - test_size), shuffle=False)
+
+    return r_train, r_val, r_test, p_train, p_val, p_test
 
 
 def batches(*x, batch_size=None):

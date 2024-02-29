@@ -71,7 +71,8 @@ class VAE(nn.Module):
 
 class VAEGen(nn.Module):
     @nn.compact
-    def __call__(self, z, cond):
+    def __call__(self, cond):
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
         return Decoder()(z, cond, training=False)
 
 
@@ -101,12 +102,11 @@ if __name__ == '__main__':
     n_reps = 5
     lr = 1e-4
     epochs = 100
-    max_patience = 10
     seed = 42
 
-    r_train, r_val, p_train, p_val = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
-    n_train, n_val = (r_train.shape[0] + batch_size - 1) // batch_size, (r_val.shape[0] + batch_size - 1) // batch_size
+    n_train, n_val, n_test = jax.tree_map(lambda x: (x.shape[0] + batch_size - 1) // batch_size, (r_train, r_val, r_test))
 
     model = VAE()
     model_gen = VAEGen()
@@ -121,39 +121,30 @@ if __name__ == '__main__':
     eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=kl_weight, n_reps=n_reps))
 
     metrics = Metrics(job_type='train', name='vae')
-    best_loss, no_improvement_steps = float('inf'), 0
     os.makedirs('checkpoints/vae', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
-        metrics.reset()
-
         for r_batch, p_patch in tqdm(batches(r_train, p_train, batch_size=batch_size), desc='Train', leave=False, total=n_train):
             key, subkey = jax.random.split(key)
             params, opt_state, loss, (state, kl, mse) = train_fn(params, (state, subkey, r_batch, p_patch), opt_state)
             metrics.add({'loss_train': loss, 'kl_train': kl, 'mse_train': mse})
 
-        metrics.collect()
         metrics.log(epoch)
-        metrics.reset()
 
         for r_batch, p_patch in tqdm(batches(r_val, p_val, batch_size=batch_size), desc='Val', leave=False, total=n_val):
             key, subkey = jax.random.split(key)
             loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, r_batch, p_patch)
             metrics.add({'loss_val': loss, 'kl_val': kl, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
 
-        metrics.collect()
         metrics.log(epoch)
 
         key, subkey = jax.random.split(key)
-        z = jax.random.normal(subkey, (10, 10))
-        metrics.plot_responses(r_sample, forward(model_gen, params, state, key, z, p_sample)[0])
+        metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
+        save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
 
-        if metrics.metrics['loss_val'] < best_loss:
-            best_loss = metrics.metrics['loss_val']
-            save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
-            no_improvement_steps = 0
-        else:
-            no_improvement_steps += 1
+    for r_batch, p_patch in tqdm(batches(r_test, p_test, batch_size=batch_size), desc='Test', total=n_test):
+        key, subkey = jax.random.split(key)
+        loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, r_batch, p_patch)
+        metrics.add({'loss_test': loss, 'kl_test': kl, 'mse_test': mse, 'mae_test': mae, 'wasserstein_test': wasserstein})
 
-        if no_improvement_steps > max_patience:
-            break
+    metrics.log(epochs)
