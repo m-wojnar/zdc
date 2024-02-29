@@ -14,9 +14,9 @@ class Metrics:
         if use_wandb:
             wandb.init(project='zdc', job_type=job_type, name=name)
 
-    def add(self, metrics):
+    def add(self, metrics, type):
         for name, value in metrics.items():
-            self.metrics[name].append(value)
+            self.metrics[f'{name}_{type}'].append(value)
 
     def log(self, step):
         metrics = {metric: jnp.array(values).mean().item() for metric, values in self.metrics.items()}

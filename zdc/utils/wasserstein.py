@@ -3,36 +3,41 @@ import jax.numpy as jnp
 from zdc.models import INPUT_SHAPE
 
 
+mask_shape = (1,) + INPUT_SHAPE
+
 coords = jnp.ogrid[0:INPUT_SHAPE[0], 0:INPUT_SHAPE[1]]
 half_x = INPUT_SHAPE[0] // 2
 half_y = INPUT_SHAPE[1] // 2
 
 checkerboard = (coords[0] + coords[1]) % 2 != 0
-checkerboard = checkerboard.reshape(1, checkerboard.shape[0], checkerboard.shape[1])
+checkerboard = checkerboard.reshape(mask_shape)
 checkerboard = checkerboard.astype(float)
 
 mask5 = jnp.copy(checkerboard)
 
 checkerboard = (coords[0] + coords[1]) % 2 == 0
-checkerboard = checkerboard.reshape(1, checkerboard.shape[0], checkerboard.shape[1])
+checkerboard = checkerboard.reshape(mask_shape)
 
-mask1 = jnp.zeros((1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-mask1 = mask1.at[:, :half_x, :half_y].set(checkerboard[:, :half_x, :half_y])
+mask1 = jnp.zeros(mask_shape)
+mask1 = mask1.at[:, :half_x, :half_y].set(checkerboard[:, :half_x, :half_y, :])
 
-mask2 = jnp.zeros((1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-mask2 = mask2.at[:, :half_x, half_y:].set(checkerboard[:, :half_x, half_y:])
+mask2 = jnp.zeros(mask_shape)
+mask2 = mask2.at[:, :half_x, half_y:].set(checkerboard[:, :half_x, half_y:, :])
 
-mask3 = jnp.zeros((1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-mask3 = mask3.at[:, half_x:, :half_y].set(checkerboard[:, half_x:, :half_y])
+mask3 = jnp.zeros(mask_shape)
+mask3 = mask3.at[:, half_x:, :half_y].set(checkerboard[:, half_x:, :half_y, :])
 
-mask4 = jnp.zeros((1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-mask4 = mask4.at[:, half_x:, half_y:].set(checkerboard[:, half_x:, half_y:])
+mask4 = jnp.zeros(mask_shape)
+mask4 = mask4.at[:, half_x:, half_y:].set(checkerboard[:, half_x:, half_y:, :])
 
 masks = [mask1, mask2, mask3, mask4, mask5]
 
 
-def sum_channels_parallel(data):
-    apply_mask = lambda mask: (data * mask).sum(axis=1).sum(axis=1)
+def sum_channels_parallel(data, apply_exp=True):
+    if apply_exp:
+        data = jnp.exp(data) - 1
+
+    apply_mask = lambda mask: (data * mask).sum(axis=(1, 2, 3))
     return jnp.stack(list(map(apply_mask, masks)), axis=1)
 
 
@@ -54,11 +59,5 @@ def wasserstein_distance(x, y):
     return jnp.sum(jnp.multiply(jnp.abs(x_cdf - y_cdf), deltas))
 
 
-def wasserstein_channels(response, generated):
-    response = (jnp.exp(response) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-    generated = (jnp.exp(generated) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-
-    ch_true = sum_channels_parallel(response)
-    ch_pred = sum_channels_parallel(generated)
-
+def wasserstein_channels(ch_true, ch_pred):
     return jnp.stack([wasserstein_distance(ch_true[:, i], ch_pred[:, i]) for i in range(5)])

@@ -12,6 +12,7 @@ from zdc.utils.data import load, batches
 from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model
+from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class Encoder(nn.Module):
@@ -73,10 +74,11 @@ def loss_fn(params, state, key, img, cond, model, kl_weight):
 def eval_fn(params, state, key, img, cond, model, kl_weight, n_reps):
     def _eval_fn(subkey):
         (reconstructed, z_mean, z_log_var), _ = forward(model, params, state, subkey, img, cond, False)
+        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(reconstructed)
         kl = kl_loss(z_mean, z_log_var)
         mse = mse_loss(img, reconstructed)
-        mae = mae_loss(img, reconstructed)
-        wasserstein = wasserstein_loss(img, reconstructed)
+        mae = mae_loss(ch_true, ch_pred) / 5
+        wasserstein = wasserstein_loss(ch_true, ch_pred)
         return kl_weight * kl + mse, kl, mse, mae, wasserstein
 
     results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
@@ -105,6 +107,7 @@ if __name__ == '__main__':
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=kl_weight)))
     eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=kl_weight, n_reps=n_reps))
+    eval_metrics = ('loss', 'kl', 'mse', 'mae', 'wasserstein')
 
     metrics = Metrics(job_type='train', name='vae')
     os.makedirs('checkpoints/vae', exist_ok=True)
@@ -113,24 +116,23 @@ if __name__ == '__main__':
         for batch in batches(r_train, p_train, batch_size=batch_size):
             train_key, subkey = jax.random.split(train_key)
             params, opt_state, loss, (state, kl, mse) = train_fn(params, (state, subkey, *batch), opt_state)
-            metrics.add({'loss_train': loss, 'kl_train': kl, 'mse_train': mse})
+            metrics.add({'loss': loss, 'kl': kl, 'mse': mse}, 'train')
 
         metrics.log(epoch)
 
         for batch in batches(r_val, p_val, batch_size=batch_size):
             val_key, subkey = jax.random.split(val_key)
-            loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
-            metrics.add({'loss_val': loss, 'kl_val': kl, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
+            metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'val')
 
         metrics.log(epoch)
 
         plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
+
         save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
 
     for batch in batches(r_test, p_test, batch_size=batch_size):
         test_key, subkey = jax.random.split(test_key)
-        loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
-        metrics.add({'loss_test': loss, 'kl_test': kl, 'mse_test': mse, 'mae_test': mae, 'wasserstein_test': wasserstein})
+        metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'test')
 
     metrics.log(epochs)

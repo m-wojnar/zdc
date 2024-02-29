@@ -9,16 +9,16 @@ def kl_loss(z_mean, z_log_var):
 
 
 def mse_loss(x, y):
-    return jnp.square(x - y).sum(axis=(1, 2)).mean()
+    return jnp.square(x - y).reshape(x.shape[0], -1).sum(axis=-1).mean()
 
 
 def mae_loss(x, y):
-    return jnp.abs(x - y).sum(axis=(1, 2)).mean()
+    return jnp.abs(x - y).reshape(x.shape[0], -1).sum(axis=-1).mean()
 
 
-def wasserstein_loss(x, generated):
-    return wasserstein_channels(x, generated).mean()
+def wasserstein_loss(ch_true, ch_pred):
+    return wasserstein_channels(ch_true, ch_pred).mean()
 
 
 def xentropy_loss(x, y):
-    return optax.sigmoid_binary_cross_entropy(x, y).mean()
+    return optax.sigmoid_binary_cross_entropy(x, y).reshape(x.shape[0], -1).sum(axis=-1).mean()

@@ -12,6 +12,7 @@ from zdc.utils.data import load, batches
 from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss, xentropy_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model
+from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class Discriminator(nn.Module):
@@ -95,14 +96,15 @@ def train_fn(params, state, key, img, cond, rand_cond, disc_opt_state, gen_opt_s
 def eval_fn(params, state, key, img, cond, rand_cond, model, n_reps):
     def _eval_fn(subkey):
         (generated, real_output, fake_output), _ = forward(model, params, state, subkey, img, cond, rand_cond, False)
+        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(generated)
         disc_loss = disc_loss_fn(real_output, fake_output)
         gen_loss = gen_loss_fn(fake_output)
         disc_real_acc = (real_output > 0).mean()
         disc_fake_acc = (fake_output < 0).mean()
         gen_acc = (fake_output > 0).mean()
         mse = mse_loss(img, generated)
-        mae = mae_loss(img, generated)
-        wasserstein = wasserstein_loss(img, generated)
+        mae = mae_loss(ch_true, ch_pred) / 5
+        wasserstein = wasserstein_loss(ch_true, ch_pred)
         return disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc, mse, mae, wasserstein
 
     results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
@@ -133,6 +135,7 @@ if __name__ == '__main__':
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
     eval_fn = jax.jit(partial(eval_fn, model=model, n_reps=n_reps))
+    eval_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc', 'mse', 'mae', 'wasserstein')
 
     metrics = Metrics(job_type='train', name='gan')
     os.makedirs('checkpoints/gan', exist_ok=True)
@@ -141,24 +144,23 @@ if __name__ == '__main__':
         for batch in batches(r_train, p_train, f_train, batch_size=batch_size):
             train_key, subkey = jax.random.split(train_key)
             params, state, disc_opt_state, gen_opt_state, disc_loss, gen_loss = train_fn(params, state, subkey, *batch, disc_opt_state, gen_opt_state)
-            metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss})
+            metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss}, 'train')
 
         metrics.log(epoch)
 
         for batch in batches(r_val, p_val, f_val, batch_size=batch_size):
             val_key, subkey = jax.random.split(val_key)
-            disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
-            metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss, 'disc_real_acc': disc_real_acc, 'disc_fake_acc': disc_fake_acc, 'gen_acc': gen_acc, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
+            metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'val')
 
         metrics.log(epoch)
 
         plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
+
         save_model(params, state, f'checkpoints/gan/epoch_{epoch + 1}.pkl.lz4')
 
     for batch in batches(r_test, p_test, f_test, batch_size=batch_size):
         test_key, subkey = jax.random.split(test_key)
-        disc_loss, gen_loss, disc_acc, gen_acc, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
-        metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss, 'disc_acc': disc_acc, 'gen_acc': gen_acc, 'mse_test': mse, 'mae_test': mae, 'wasserstein_test': wasserstein})
+        metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'test')
 
     metrics.log(epochs)
