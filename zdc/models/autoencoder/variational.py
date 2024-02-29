@@ -7,7 +7,7 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, Flatten, Reshape, Sampling, UpSample
+from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, Sampling, UpSample
 from zdc.utils.data import load, batches
 from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
@@ -20,13 +20,11 @@ class Encoder(nn.Module):
         x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
         x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
         x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
-
         x = nn.leaky_relu(x, negative_slope=0.1)
         x = Flatten()(x)
-        x = Concatenate(axis=-1)(x, cond)
+        x = Concatenate()(x, cond)
         x = nn.Dense(20)(x)
         x = nn.relu(x)
-
         z_mean = nn.Dense(10)(x)
         z_log_var = nn.Dense(10)(x)
         z = Sampling()(z_mean, z_log_var)
@@ -36,25 +34,15 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x = Concatenate(axis=-1)(z, cond)
+        x = Concatenate()(z, cond)
         x = nn.Dense(128 * 6 * 6)(x)
         x = Reshape((-1, 6, 6, 128))(x)
-
         x = UpSample()(x)
-        x = nn.Conv(128, kernel_size=(4, 4))(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.relu(x)
-
+        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
         x = UpSample()(x)
-        x = nn.Conv(64, kernel_size=(4, 4))(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.relu(x)
-
+        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
         x = UpSample()(x)
-        x = nn.Conv(32, kernel_size=(4, 4))(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.relu(x)
-
+        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
         x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
         x = nn.relu(x)
         return x

@@ -7,7 +7,7 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, Flatten, Reshape, UpSample
+from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
 from zdc.utils.data import load, batches
 from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss, xentropy_loss
 from zdc.utils.metrics import Metrics
@@ -17,31 +17,12 @@ from zdc.utils.nn import init, forward, gradient_step, save_model
 class Discriminator(nn.Module):
     @nn.compact
     def __call__(self, img, cond, training=True):
-        x = nn.Conv(32, kernel_size=(3, 3), padding='valid')(img)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-        x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
-
-        x = nn.Conv(16, kernel_size=(3, 3), padding='valid')(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-        x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
-
+        x = ConvBlock(32, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1, max_pool_size=2)(img, training=training)
+        x = ConvBlock(16, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1, max_pool_size=2)(x, training=training)
         x = Flatten()(x)
-        x = Concatenate(axis=-1)(x, cond)
-
-        x = nn.Dense(128)(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-
-        x = nn.Dense(64)(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-
+        x = Concatenate()(x, cond)
+        x = DenseBlock(128, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
+        x = DenseBlock(64, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
         x = nn.Dense(1)(x)
         return x
 
@@ -49,33 +30,15 @@ class Discriminator(nn.Module):
 class Generator(nn.Module):
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x = Concatenate(axis=-1)(z, cond)
-        x = nn.Dense(128 * 2)(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-
-        x = nn.Dense(128 * 13 * 13)(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-
+        x = Concatenate()(z, cond)
+        x = DenseBlock(128 * 2, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
+        x = DenseBlock(128 * 13 * 13, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
         x = Reshape((-1, 13, 13, 128))(x)
         x = UpSample()(x)
-
-        x = nn.Conv(128, kernel_size=(3, 3), padding='valid')(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
+        x = ConvBlock(128, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
         x = UpSample()(x)
-
-        x = nn.Conv(64, kernel_size=(3, 3), padding='valid')(x)
-        x = nn.BatchNorm(use_running_average=not training)(x)
-        x = nn.Dropout(0.2)(x, deterministic=not training)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-
-        x = nn.Conv(1, kernel_size=(3, 3), padding='valid')(x)
-        x = nn.relu(x)
+        x = ConvBlock(64, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
+        x = ConvBlock(1, kernel_size=3, padding='valid', negative_slope=0.)(x, training=training)
         return x
 
 
@@ -134,12 +97,13 @@ def eval_fn(params, state, key, img, cond, rand_cond, model, n_reps):
         (generated, real_output, fake_output), _ = forward(model, params, state, subkey, img, cond, rand_cond, False)
         disc_loss = disc_loss_fn(real_output, fake_output)
         gen_loss = gen_loss_fn(fake_output)
-        disc_acc = jnp.stack([real_output > 0, fake_output < 0]).mean()
+        disc_real_acc = (real_output > 0).mean()
+        disc_fake_acc = (fake_output < 0).mean()
         gen_acc = (fake_output > 0).mean()
         mse = mse_loss(img, generated)
         mae = mae_loss(img, generated)
         wasserstein = wasserstein_loss(img, generated)
-        return disc_loss, gen_loss, disc_acc, gen_acc, mse, mae, wasserstein
+        return disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc, mse, mae, wasserstein
 
     results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
     return jnp.array(results).mean(axis=1)
@@ -170,7 +134,7 @@ if __name__ == '__main__':
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
     eval_fn = jax.jit(partial(eval_fn, model=model, n_reps=n_reps))
 
-    metrics = Metrics(job_type='train', name='vae', use_wandb=False)
+    metrics = Metrics(job_type='train', name='gan')
     os.makedirs('checkpoints/gan', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
@@ -183,8 +147,8 @@ if __name__ == '__main__':
 
         for batch in batches(r_val, p_val, f_val, batch_size=batch_size):
             val_key, subkey = jax.random.split(val_key)
-            disc_loss, gen_loss, disc_acc, gen_acc, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
-            metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss, 'disc_acc': disc_acc, 'gen_acc': gen_acc, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
+            disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
+            metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss, 'disc_real_acc': disc_real_acc, 'disc_fake_acc': disc_fake_acc, 'gen_acc': gen_acc, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
 
         metrics.log(epoch)
 

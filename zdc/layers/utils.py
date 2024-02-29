@@ -17,7 +17,7 @@ class Flatten(nn.Module):
 
 
 class Concatenate(nn.Module):
-    axis: int
+    axis: int = -1
 
     @nn.compact
     def __call__(self, x1, x2):

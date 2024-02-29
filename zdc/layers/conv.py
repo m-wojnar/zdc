@@ -1,30 +1,19 @@
-from typing import Callable
-
 from flax import linen as nn
 
 
-class MLP(nn.Module):
-    layer_sizes: list
-    activation: Callable = nn.relu
-
-    @nn.compact
-    def __call__(self, x):
-        for size in self.layer_sizes[:-1]:
-            x = nn.Dense(size)(x)
-            x = self.activation(x)
-
-        return nn.Dense(self.layer_sizes[-1])(x)
-
-
-class DenseBlock(nn.Module):
+class ConvBlock(nn.Module):
     features: int
+    kernel_size: int = 3
+    strides: int = 1
+    padding: str = 'same'
     use_bn: bool = False
     dropout_rate: float = None
     negative_slope: float = None
+    max_pool_size: int = None
 
     @nn.compact
     def __call__(self, x, training=True):
-        x = nn.Dense(self.features)(x)
+        x = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size), strides=(self.strides, self.strides), padding=self.padding)(x)
 
         if self.use_bn:
             x = nn.BatchNorm(use_running_average=not training)(x)
@@ -32,5 +21,8 @@ class DenseBlock(nn.Module):
             x = nn.Dropout(self.dropout_rate, deterministic=not training)(x)
         if self.negative_slope is not None:
             x = nn.leaky_relu(x, negative_slope=self.negative_slope)
+        if self.max_pool_size is not None:
+            pool_size = (self.max_pool_size, self.max_pool_size)
+            x = nn.max_pool(x, window_shape=pool_size, strides=pool_size)
 
         return x
