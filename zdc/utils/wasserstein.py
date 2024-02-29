@@ -62,7 +62,3 @@ def wasserstein_channels(response, generated):
     ch_pred = sum_channels_parallel(generated)
 
     return jnp.stack([wasserstein_distance(ch_true[:, i], ch_pred[:, i]) for i in range(5)])
-
-
-def wasserstein_loss(response, generated):
-    return wasserstein_channels(response, generated).mean()

@@ -3,7 +3,7 @@ from flax import linen as nn
 
 
 class UpSample(nn.Module):
-    scale: int
+    scale: int = 2
     method: str = 'nearest'
 
     @nn.compact

@@ -5,14 +5,13 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax import linen as nn
-from tqdm import trange, tqdm
+from tqdm import trange
 
 from zdc.layers import Concatenate, Flatten, Reshape, Sampling, UpSample
 from zdc.utils.data import load, batches
-from zdc.utils.losses import kl_loss, mse_loss, mae_loss
+from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model
-from zdc.utils.wasserstein import wasserstein_loss
 
 
 class Encoder(nn.Module):
@@ -24,7 +23,7 @@ class Encoder(nn.Module):
 
         x = nn.leaky_relu(x, negative_slope=0.1)
         x = Flatten()(x)
-        x = Concatenate(axis=-1)(cond, x)
+        x = Concatenate(axis=-1)(x, cond)
         x = nn.Dense(20)(x)
         x = nn.relu(x)
 
@@ -41,17 +40,17 @@ class Decoder(nn.Module):
         x = nn.Dense(128 * 6 * 6)(x)
         x = Reshape((-1, 6, 6, 128))(x)
 
-        x = UpSample(2)(x)
+        x = UpSample()(x)
         x = nn.Conv(128, kernel_size=(4, 4))(x)
         x = nn.BatchNorm(use_running_average=not training)(x)
         x = nn.relu(x)
 
-        x = UpSample(2)(x)
+        x = UpSample()(x)
         x = nn.Conv(64, kernel_size=(4, 4))(x)
         x = nn.BatchNorm(use_running_average=not training)(x)
         x = nn.relu(x)
 
-        x = UpSample(2)(x)
+        x = UpSample()(x)
         x = nn.Conv(32, kernel_size=(4, 4))(x)
         x = nn.BatchNorm(use_running_average=not training)(x)
         x = nn.relu(x)
@@ -104,15 +103,14 @@ if __name__ == '__main__':
     epochs = 100
     seed = 42
 
+    key = jax.random.PRNGKey(seed)
+    init_key, train_key, val_key, test_key, plot_key = jax.random.split(key, 5)
+
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
-    n_train, n_val, n_test = jax.tree_map(lambda x: (x.shape[0] + batch_size - 1) // batch_size, (r_train, r_val, r_test))
 
-    model = VAE()
-    model_gen = VAEGen()
-
-    key = jax.random.PRNGKey(seed)
-    params, state = init(model, key, r_sample, p_sample)
+    model, model_gen = VAE(), VAEGen()
+    params, state = init(model, init_key, r_sample, p_sample)
 
     optimizer = optax.rmsprop(lr)
     opt_state = optimizer.init(params)
@@ -124,27 +122,27 @@ if __name__ == '__main__':
     os.makedirs('checkpoints/vae', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
-        for r_batch, p_patch in tqdm(batches(r_train, p_train, batch_size=batch_size), desc='Train', leave=False, total=n_train):
-            key, subkey = jax.random.split(key)
-            params, opt_state, loss, (state, kl, mse) = train_fn(params, (state, subkey, r_batch, p_patch), opt_state)
+        for batch in batches(r_train, p_train, batch_size=batch_size):
+            train_key, subkey = jax.random.split(train_key)
+            params, opt_state, loss, (state, kl, mse) = train_fn(params, (state, subkey, *batch), opt_state)
             metrics.add({'loss_train': loss, 'kl_train': kl, 'mse_train': mse})
 
         metrics.log(epoch)
 
-        for r_batch, p_patch in tqdm(batches(r_val, p_val, batch_size=batch_size), desc='Val', leave=False, total=n_val):
-            key, subkey = jax.random.split(key)
-            loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, r_batch, p_patch)
+        for batch in batches(r_val, p_val, batch_size=batch_size):
+            val_key, subkey = jax.random.split(val_key)
+            loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
             metrics.add({'loss_val': loss, 'kl_val': kl, 'mse_val': mse, 'mae_val': mae, 'wasserstein_val': wasserstein})
 
         metrics.log(epoch)
 
-        key, subkey = jax.random.split(key)
+        plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
         save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
 
-    for r_batch, p_patch in tqdm(batches(r_test, p_test, batch_size=batch_size), desc='Test', total=n_test):
-        key, subkey = jax.random.split(key)
-        loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, r_batch, p_patch)
+    for batch in batches(r_test, p_test, batch_size=batch_size):
+        test_key, subkey = jax.random.split(test_key)
+        loss, kl, mse, mae, wasserstein = eval_fn(params, state, subkey, *batch)
         metrics.add({'loss_test': loss, 'kl_test': kl, 'mse_test': mse, 'mae_test': mae, 'wasserstein_test': wasserstein})
 
     metrics.log(epochs)

@@ -39,6 +39,8 @@ class Metrics:
             ax.axis('off')
             fig.colorbar(im, ax=ax)
 
+        plt.tight_layout()
+
         if self.use_wandb:
             wandb.log({'generated': wandb.Image(fig)}, step=step)
         else:
