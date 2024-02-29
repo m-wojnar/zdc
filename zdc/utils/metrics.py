@@ -7,8 +7,9 @@ import wandb
 
 
 class Metrics:
-    def __init__(self):
+    def __init__(self, job_type, name):
         self.metrics = defaultdict(list)
+        wandb.init(project='zdc', job_type=job_type, name=name)
 
     def reset(self):
         self.metrics = defaultdict(list)

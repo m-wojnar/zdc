@@ -4,13 +4,12 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import optax
-import wandb
 from flax import linen as nn
 from tqdm import trange, tqdm
 
-from zdc.layers import Concatenate, Sampling, Reshape, UpSample
+from zdc.layers import Concatenate, Flatten, Reshape, Sampling, UpSample
 from zdc.utils.data import load, batches
-from zdc.utils.losses import kl_loss, reconstruction_loss, mae_loss
+from zdc.utils.losses import kl_loss, mse_loss, mae_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model
 from zdc.utils.wasserstein import wasserstein_loss
@@ -24,8 +23,8 @@ class Encoder(nn.Module):
         x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
 
         x = nn.leaky_relu(x, negative_slope=0.1)
-        x = Reshape((x.shape[0], -1))(x)
-        x = Concatenate(axis=-1)(x, cond)
+        x = Flatten()(x)
+        x = Concatenate(axis=-1)(cond, x)
         x = nn.Dense(20)(x)
         x = nn.relu(x)
 
@@ -38,7 +37,7 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x = jnp.concatenate([z, cond], axis=-1)
+        x = Concatenate(axis=-1)(z, cond)
         x = nn.Dense(128 * 6 * 6)(x)
         x = Reshape((-1, 6, 6, 128))(x)
 
@@ -79,46 +78,50 @@ class VAEGen(nn.Module):
 def loss_fn(params, state, key, img, cond, model, kl_weight):
     (reconstructed, z_mean, z_log_var), state = forward(model, params, state, key, img, cond)
     kl = kl_loss(z_mean, z_log_var)
-    mse = reconstruction_loss(img, reconstructed)
-    return mse + kl_weight * kl, (state, kl, mse)
+    mse = mse_loss(img, reconstructed)
+    return kl_weight * kl + mse, (state, kl, mse)
 
 
-def eval_fn(params, state, key, img, cond, model, kl_weight):
-    (reconstructed, z_mean, z_log_var), _ = forward(model, params, state, key, img, cond, False)
+def eval_fn(params, state, key, img, cond, model, kl_weight, n_reps):
+    def _eval_fn(subkey):
+        (reconstructed, z_mean, z_log_var), _ = forward(model, params, state, subkey, img, cond, False)
+        kl = kl_loss(z_mean, z_log_var)
+        mse = mse_loss(img, reconstructed)
+        mae = mae_loss(img, reconstructed)
+        wasserstein = wasserstein_loss(jnp.exp(img) - 1, jnp.exp(reconstructed) - 1)
+        return kl_weight * kl + mse, kl, mse, mae, wasserstein
 
-    kl = kl_loss(z_mean, z_log_var)
-    mse = reconstruction_loss(img, reconstructed)
-    mae = mae_loss(img, reconstructed)
-    wasserstein = wasserstein_loss(img, reconstructed)
-    loss = mse + kl_weight * kl
-
-    return loss, kl, mse, mae, wasserstein
+    results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
+    return jnp.array(results).mean(axis=0)
 
 
 if __name__ == '__main__':
-    r_train, r_val, p_train, p_val = load('../../../data', 'standard')
-    r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
-
-    model = VAE()
-    key = jax.random.PRNGKey(42)
-    params, state = init(model, key, r_sample, p_sample)
-
-    optimizer = optax.rmsprop(1e-4)
-    opt_state = optimizer.init(params)
-
-    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=0.7)))
-    eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=0.7))
-
     batch_size = 128
     kl_weight = 0.7
+    n_reps = 5
+    lr = 1e-4
     epochs = 100
+    max_patience = 10
+    seed = 42
 
-    wandb.init(project='zdc', job_type='train', name='vae')
+    r_train, r_val, p_train, p_val = load('../../../data', 'standard')
+    r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
     n_train, n_val = (r_train.shape[0] + batch_size - 1) // batch_size, (r_val.shape[0] + batch_size - 1) // batch_size
 
+    model = VAE()
     model_gen = VAEGen()
-    metrics = Metrics()
-    best_loss = float('inf')
+
+    key = jax.random.PRNGKey(seed)
+    params, state = init(model, key, r_sample, p_sample)
+
+    optimizer = optax.rmsprop(lr)
+    opt_state = optimizer.init(params)
+
+    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=kl_weight)))
+    eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=kl_weight, n_reps=n_reps))
+
+    metrics = Metrics(job_type='train', name='vae')
+    best_loss, no_improvement_steps = float('inf'), 0
     os.makedirs('checkpoints/vae', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
@@ -148,3 +151,9 @@ if __name__ == '__main__':
         if metrics.metrics['loss_val'] < best_loss:
             best_loss = metrics.metrics['loss_val']
             save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
+            no_improvement_steps = 0
+        else:
+            no_improvement_steps += 1
+
+        if no_improvement_steps > max_patience:
+            break

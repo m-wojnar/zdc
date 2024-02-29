@@ -10,6 +10,12 @@ class Reshape(nn.Module):
         return x.reshape(self.shape)
 
 
+class Flatten(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        return x.reshape((x.shape[0], -1))
+
+
 class Concatenate(nn.Module):
     axis: int
 
