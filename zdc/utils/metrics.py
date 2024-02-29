@@ -7,9 +7,12 @@ import wandb
 
 
 class Metrics:
-    def __init__(self, job_type, name):
+    def __init__(self, job_type, name, use_wandb=True):
         self.metrics = defaultdict(list)
-        wandb.init(project='zdc', job_type=job_type, name=name)
+        self.use_wandb = use_wandb
+
+        if use_wandb:
+            wandb.init(project='zdc', job_type=job_type, name=name)
 
     def reset(self):
         self.metrics = defaultdict(list)
@@ -22,12 +25,13 @@ class Metrics:
         self.metrics = {metric: jnp.mean(jnp.array(values)).item() for metric, values in self.metrics.items()}
 
     def log(self, step):
-        wandb.log(self.metrics, step=step)
+        if self.use_wandb:
+            wandb.log(self.metrics, step=step)
+
         print(f"Step: {step}")
         pprint(self.metrics)
 
-    @staticmethod
-    def plot_responses(responses, generated, n=7):
+    def plot_responses(self, responses, generated, n=7):
         fig, axs = plt.subplots(2, n, figsize=(2 * n + 1, 4), dpi=200)
 
         for i in range(2 * n):
@@ -37,5 +41,9 @@ class Metrics:
             ax.axis('off')
             fig.colorbar(im, ax=ax)
 
-        wandb.log({'generated': wandb.Image(fig)})
+        if self.use_wandb:
+            wandb.log({'generated': wandb.Image(fig)})
+        else:
+            plt.show()
+
         plt.close(fig)

@@ -54,15 +54,15 @@ def wasserstein_distance(x, y):
     return jnp.sum(jnp.multiply(jnp.abs(x_cdf - y_cdf), deltas))
 
 
-def wasserstein_channels(response_true, response_pred):
-    response_true = (jnp.exp(response_true) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
-    response_pred = (jnp.exp(response_pred) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
+def wasserstein_channels(response, generated):
+    response = (jnp.exp(response) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
+    generated = (jnp.exp(generated) - 1).reshape((-1, INPUT_SHAPE[0], INPUT_SHAPE[1]))
 
-    ch_true = sum_channels_parallel(response_true)
-    ch_pred = sum_channels_parallel(response_pred)
+    ch_true = sum_channels_parallel(response)
+    ch_pred = sum_channels_parallel(generated)
 
     return jnp.stack([wasserstein_distance(ch_true[:, i], ch_pred[:, i]) for i in range(5)])
 
 
-def wasserstein_loss(response_true, response_pred):
-    return wasserstein_channels(response_true, response_pred).mean()
+def wasserstein_loss(response, generated):
+    return wasserstein_channels(response, generated).mean()

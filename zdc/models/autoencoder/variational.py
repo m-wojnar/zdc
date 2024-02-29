@@ -88,11 +88,11 @@ def eval_fn(params, state, key, img, cond, model, kl_weight, n_reps):
         kl = kl_loss(z_mean, z_log_var)
         mse = mse_loss(img, reconstructed)
         mae = mae_loss(img, reconstructed)
-        wasserstein = wasserstein_loss(jnp.exp(img) - 1, jnp.exp(reconstructed) - 1)
+        wasserstein = wasserstein_loss(img, reconstructed)
         return kl_weight * kl + mse, kl, mse, mae, wasserstein
 
     results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
-    return jnp.array(results).mean(axis=0)
+    return jnp.array(results).mean(axis=1)
 
 
 if __name__ == '__main__':
