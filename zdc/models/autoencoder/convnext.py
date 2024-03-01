@@ -15,10 +15,10 @@ from zdc.utils.nn import init, forward, gradient_step, save_model, print_model
 
 
 class Encoder(nn.Module):
-    latent_dim: int = 128
+    latent_dim: int = 32
     kernel_size: int = 3
-    max_drop_rate: float = 0.
-    depths: tuple = (3, 3, 9, 3)
+    max_drop_rate: float = 0.33
+    depths: tuple = (1, 1, 3, 1)
     projection_dims: tuple = (24, 48, 96, 192)
     drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(0., max_drop_rate, sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
 
@@ -44,8 +44,8 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     kernel_size: int = 3
-    max_drop_rate: float = 0.
-    depths: tuple = (3, 9, 3, 3)
+    max_drop_rate: float = 0.33
+    depths: tuple = (1, 3, 1, 1)
     projection_dims: tuple = (192, 96, 48, 24)
     drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(max_drop_rate, 0., sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
 
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     batch_size = 128
     kl_weight = 0.7
     n_reps = 5
-    lr = 1e-4
+    lr = 4e-4
     epochs = 100
     seed = 42
 
@@ -99,15 +99,15 @@ if __name__ == '__main__':
     params, state = init(model, init_key, r_sample, p_sample)
     print_model(params)
 
-    optimizer = optax.rmsprop(lr)
+    optimizer = optax.rmsprop(lr, decay=0.8, momentum=0.1)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=kl_weight)))
     eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=kl_weight, n_reps=n_reps))
     eval_metrics = ('loss', 'kl', 'mse', 'mae', 'wasserstein')
 
-    metrics = Metrics(job_type='train', name='convnext')
-    os.makedirs('checkpoints/convnext', exist_ok=True)
+    metrics = Metrics(job_type='train', name='vae_convnext')
+    os.makedirs('checkpoints/vae_convnext', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
         for batch in batches(r_train, p_train, batch_size=batch_size):

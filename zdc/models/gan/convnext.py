@@ -113,8 +113,8 @@ if __name__ == '__main__':
     eval_fn = jax.jit(partial(eval_fn, model=model, n_reps=n_reps))
     eval_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc', 'mse', 'mae', 'wasserstein')
 
-    metrics = Metrics(job_type='train', name='gan')
-    os.makedirs('checkpoints/convnext', exist_ok=True)
+    metrics = Metrics(job_type='train', name='gan_convnext')
+    os.makedirs('checkpoints/gan_convnext', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
         for batch in batches(r_train, p_train, f_train, batch_size=batch_size):
