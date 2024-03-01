@@ -7,12 +7,18 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, Sampling, UpSample
+from zdc.layers import Concatenate, ConvBlock, Flatten, MLP, Reshape, Sampling, UpSample
 from zdc.utils.data import load, batches
 from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model
 from zdc.utils.wasserstein import sum_channels_parallel
+
+
+class ContextEncoder(nn.Module):
+    @nn.compact
+    def __call__(self, cond, training=True):
+        return MLP([64, 64, 32])(cond)
 
 
 class Encoder(nn.Module):
@@ -52,6 +58,7 @@ class Decoder(nn.Module):
 class VAE(nn.Module):
     @nn.compact
     def __call__(self, img, cond, training=True):
+        cond = ContextEncoder()(cond, training=training)
         z_mean, z_log_var, z = Encoder()(img, cond, training=training)
         reconstructed = Decoder()(z, cond, training=training)
         return reconstructed, z_mean, z_log_var
@@ -60,6 +67,7 @@ class VAE(nn.Module):
 class VAEGen(nn.Module):
     @nn.compact
     def __call__(self, cond):
+        cond = ContextEncoder()(cond, training=False)
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
         return Decoder()(z, cond, training=False)
 
