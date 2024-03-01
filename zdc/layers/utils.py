@@ -20,5 +20,11 @@ class Concatenate(nn.Module):
     axis: int = -1
 
     @nn.compact
-    def __call__(self, x1, x2):
-        return jnp.concatenate([x1, x2], axis=self.axis)
+    def __call__(self, *xs):
+        return jnp.concatenate(xs, axis=self.axis)
+
+
+class GlobalAveragePooling(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        return x.mean(axis=(1, 2))

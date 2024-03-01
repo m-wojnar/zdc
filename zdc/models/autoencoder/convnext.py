@@ -7,27 +7,35 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, Sampling, UpSample
+from zdc.layers import Concatenate, ConvNeXtV2Embedding, ConvNeXtV2Stage, GlobalAveragePooling, Reshape, Sampling, UpSample
+from zdc.models.autoencoder.variational import eval_fn, loss_fn
 from zdc.utils.data import load, batches
-from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import init, forward, gradient_step, save_model, print_model
-from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class Encoder(nn.Module):
-    latent_dim: int = 10
+    latent_dim: int = 128
+    kernel_size: int = 3
+    max_drop_rate: float = 0.
+    depths: tuple = (3, 3, 9, 3)
+    projection_dims: tuple = (24, 48, 96, 192)
+    drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(0., max_drop_rate, sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
 
     @nn.compact
     def __call__(self, img, cond, training=True):
-        x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
-        x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-        x = Flatten()(x)
+        x = ConvNeXtV2Embedding(patch_size=2, projection_dim=self.projection_dims[0])(img)
+
+        for i, (projection_dim, drop_rates) in enumerate(zip(self.projection_dims, self.drop_rates)):
+            patch_size = 2 if i > 0 else 1
+            x = ConvNeXtV2Stage(patch_size, projection_dim, self.kernel_size, drop_rates)(x, training=training)
+
+        x = GlobalAveragePooling()(x)
+        x = nn.LayerNorm(epsilon=1e-6)(x)
         x = Concatenate()(x, cond)
         x = nn.Dense(2 * self.latent_dim)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
+
         z_mean = nn.Dense(self.latent_dim)(x)
         z_log_var = nn.Dense(self.latent_dim)(x)
         z = Sampling()(z_mean, z_log_var)
@@ -35,23 +43,30 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
+    kernel_size: int = 3
+    max_drop_rate: float = 0.
+    depths: tuple = (3, 9, 3, 3)
+    projection_dims: tuple = (192, 96, 48, 24)
+    drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(max_drop_rate, 0., sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
+
     @nn.compact
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
-        x = nn.Dense(128 * 6 * 6)(x)
-        x = Reshape((-1, 6, 6, 128))(x)
-        x = UpSample()(x)
-        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
+        x = nn.Dense(3 * 3 * self.projection_dims[0])(x)
+        x = nn.gelu(x)
+        x = Reshape((-1, 3, 3, self.projection_dims[0]))(x)
+        x = nn.LayerNorm(epsilon=1e-6)(x)
+
+        for projection_dim, drop_rates in zip(self.projection_dims, self.drop_rates):
+            x = UpSample()(x)
+            x = ConvNeXtV2Stage(1, projection_dim, self.kernel_size, drop_rates)(x, training=training)
+
         x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
         x = nn.relu(x)
         return x
 
 
-class VAE(nn.Module):
+class ConvNeXtVAE(nn.Module):
     @nn.compact
     def __call__(self, img, cond, training=True):
         z_mean, z_log_var, z = Encoder()(img, cond, training=training)
@@ -59,32 +74,11 @@ class VAE(nn.Module):
         return reconstructed, z_mean, z_log_var
 
 
-class VAEGen(nn.Module):
+class ConvNeXtVAEGen(nn.Module):
     @nn.compact
     def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 128))
         return Decoder()(z, cond, training=False)
-
-
-def loss_fn(params, state, key, img, cond, model, kl_weight):
-    (reconstructed, z_mean, z_log_var), state = forward(model, params, state, key, img, cond)
-    kl = kl_loss(z_mean, z_log_var)
-    mse = mse_loss(img, reconstructed)
-    return kl_weight * kl + mse, (state, kl, mse)
-
-
-def eval_fn(params, state, key, img, cond, model, kl_weight, n_reps):
-    def _eval_fn(subkey):
-        (reconstructed, z_mean, z_log_var), _ = forward(model, params, state, subkey, img, cond, False)
-        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(reconstructed)
-        kl = kl_loss(z_mean, z_log_var)
-        mse = mse_loss(img, reconstructed)
-        mae = mae_loss(ch_true, ch_pred) / 5
-        wasserstein = wasserstein_loss(ch_true, ch_pred)
-        return kl_weight * kl + mse, kl, mse, mae, wasserstein
-
-    results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
-    return jnp.array(results).mean(axis=1)
 
 
 if __name__ == '__main__':
@@ -101,7 +95,7 @@ if __name__ == '__main__':
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
 
-    model, model_gen = VAE(), VAEGen()
+    model, model_gen = ConvNeXtVAE(), ConvNeXtVAEGen()
     params, state = init(model, init_key, r_sample, p_sample)
     print_model(params)
 
@@ -112,8 +106,8 @@ if __name__ == '__main__':
     eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=kl_weight, n_reps=n_reps))
     eval_metrics = ('loss', 'kl', 'mse', 'mae', 'wasserstein')
 
-    metrics = Metrics(job_type='train', name='vae')
-    os.makedirs('checkpoints/vae', exist_ok=True)
+    metrics = Metrics(job_type='train', name='convnext')
+    os.makedirs('checkpoints/convnext', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
         for batch in batches(r_train, p_train, batch_size=batch_size):
@@ -132,7 +126,7 @@ if __name__ == '__main__':
         plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
 
-        save_model(params, state, f'checkpoints/vae/epoch_{epoch + 1}.pkl.lz4')
+        save_model(params, state, f'checkpoints/convnext/epoch_{epoch + 1}.pkl.lz4')
 
     for batch in batches(r_test, p_test, batch_size=batch_size):
         test_key, subkey = jax.random.split(test_key)

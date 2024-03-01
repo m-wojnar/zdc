@@ -11,6 +11,7 @@ authors = [
 requires-python = ">=3.9"
 dependencies = [
   "cloudpickle~=3.0.0",
+  "clu~=0.0.11",
   "flax~=0.8.1",
   "jax~=0.4.25",
   "jaxlib~=0.4.25",

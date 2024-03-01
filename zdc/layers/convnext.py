@@ -32,6 +32,18 @@ class GlobalResponseNorm(nn.Module):
         return ((gamma * (x * Nx)) + beta) + x
 
 
+class ConvNeXtV2Embedding(nn.Module):
+    patch_size: int
+    projection_dim: int
+    epsilon: float = 1e-6
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Conv(self.projection_dim, kernel_size=(self.patch_size, self.patch_size), strides=(self.patch_size, self.patch_size))(x)
+        x = nn.LayerNorm(epsilon=self.epsilon)(x)
+        return x
+
+
 class ConvNeXtV2Block(nn.Module):
     projection_dim: int
     kernel_size: int
@@ -49,3 +61,23 @@ class ConvNeXtV2Block(nn.Module):
         x = nn.Dense(self.projection_dim)(x)
         x = StochasticDepth(self.drop_rate)(x, training=training)
         return x + residual
+
+
+class ConvNeXtV2Stage(nn.Module):
+    patch_size: int
+    projection_dim: int
+    kernel_size: int
+    drop_rates: list
+    epsilon: float = 1e-6
+
+    @nn.compact
+    def __call__(self, x, training=True):
+        if self.projection_dim != x.shape[-1] or self.patch_size > 1:
+            patch_size = (self.patch_size, self.patch_size)
+            x = nn.LayerNorm(epsilon=self.epsilon)(x)
+            x = nn.Conv(self.projection_dim, kernel_size=patch_size, strides=patch_size)(x)
+
+        for drop_rate in self.drop_rates:
+            x = ConvNeXtV2Block(self.projection_dim, self.kernel_size, drop_rate)(x, training=training)
+
+        return x

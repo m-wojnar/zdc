@@ -2,6 +2,7 @@ import jax
 import lz4.frame
 import optax
 from cloudpickle import cloudpickle
+from clu.parameter_overview import get_parameter_overview
 
 
 def gradient_step(params, loss_params, opt_state, optimizer, loss_fn):
@@ -42,3 +43,7 @@ def save_model(params, state, path):
 def load_model(path):
     with lz4.frame.open(path, 'rb') as f:
         return cloudpickle.load(f)
+
+
+def print_model(params):
+    print(get_parameter_overview(params, include_stats=False))

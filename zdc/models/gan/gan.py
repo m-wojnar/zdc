@@ -7,18 +7,12 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, ConvBlock, DenseBlock, MLP, Flatten, Reshape, UpSample
+from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
 from zdc.utils.data import load, batches
 from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss, xentropy_loss
 from zdc.utils.metrics import Metrics
-from zdc.utils.nn import init, forward, gradient_step, save_model, get_layers
+from zdc.utils.nn import init, forward, gradient_step, save_model, get_layers, print_model
 from zdc.utils.wasserstein import sum_channels_parallel
-
-
-class ContextEncoder(nn.Module):
-    @nn.compact
-    def __call__(self, cond, training=True):
-        return MLP([64, 64, 32])(cond)
 
 
 class Discriminator(nn.Module):
@@ -51,13 +45,10 @@ class Generator(nn.Module):
 
 class GAN(nn.Module):
     def setup(self):
-        self.context_encoder = ContextEncoder()
         self.discriminator = Discriminator()
         self.generator = Generator()
 
     def __call__(self, img, cond, rand_cond, training=True):
-        cond = self.context_encoder(cond, training=training)
-        rand_cond = self.context_encoder(rand_cond, training=training)
         z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 10))
         generated = self.generator(z, rand_cond, training=training)
         real_output = self.discriminator(img, cond, training=training)
@@ -67,11 +58,9 @@ class GAN(nn.Module):
 
 class GANGen(nn.Module):
     def setup(self):
-        self.context_encoder = ContextEncoder()
         self.generator = Generator()
 
     def __call__(self, cond):
-        cond = self.context_encoder(cond, training=False)
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
         return self.generator(z, cond, training=False)
 
@@ -96,9 +85,9 @@ def train_fn(params, state, key, img, cond, rand_cond, disc_opt_state, gen_opt_s
         return gen_loss_fn(fake_output), state
 
     disc_params, disc_opt_state, disc_loss, _ = gradient_step(
-        get_layers(params, 'discriminator'), (get_layers(params, ['context_encoder', 'generator']), state), disc_opt_state, disc_optimizer, _disc_loss_fn)
+        get_layers(params, 'discriminator'), (get_layers(params, 'generator'), state), disc_opt_state, disc_optimizer, _disc_loss_fn)
     gen_params, gen_opt_state, gen_loss, state = gradient_step(
-        get_layers(params, ['generator', 'context_encoder']), (get_layers(params, 'discriminator'), state), gen_opt_state, gen_optimizer, _gen_loss_fn)
+        get_layers(params, 'generator'), (get_layers(params, 'discriminator'), state), gen_opt_state, gen_optimizer, _gen_loss_fn)
 
     return disc_params | gen_params, state, disc_opt_state, gen_opt_state, disc_loss, gen_loss
 
@@ -137,11 +126,12 @@ if __name__ == '__main__':
 
     model, model_gen = GAN(), GANGen()
     params, state = init(model, init_key, r_sample, p_sample, f_sample)
+    print_model(params)
 
     disc_optimizer = optax.adam(lr)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
     gen_optimizer = optax.adam(lr)
-    gen_opt_state = gen_optimizer.init(get_layers(params, ['context_encoder', 'generator']))
+    gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
     eval_fn = jax.jit(partial(eval_fn, model=model, n_reps=n_reps))
