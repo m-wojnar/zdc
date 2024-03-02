@@ -77,7 +77,7 @@ class ConvNeXtVAE(nn.Module):
 class ConvNeXtVAEGen(nn.Module):
     @nn.compact
     def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 128))
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 32))
         return Decoder()(z, cond, training=False)
 
 

@@ -16,8 +16,8 @@ from zdc.utils.nn import init, forward, save_model, print_model, get_layers
 
 class Discriminator(nn.Module):
     kernel_size: int = 3
-    max_drop_rate: float = 0.
-    depths: tuple = (3, 3, 9, 3)
+    max_drop_rate: float = 0.33
+    depths: tuple = (1, 1, 3, 1)
     projection_dims: tuple = (24, 48, 96, 192)
     drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(0., max_drop_rate, sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
 
@@ -42,8 +42,8 @@ class Discriminator(nn.Module):
 
 class Generator(nn.Module):
     kernel_size: int = 3
-    max_drop_rate: float = 0.
-    depths: tuple = (3, 9, 3, 3)
+    max_drop_rate: float = 0.33
+    depths: tuple = (1, 3, 1, 1)
     projection_dims: tuple = (192, 96, 48, 24)
     drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(max_drop_rate, 0., sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
 
@@ -70,7 +70,7 @@ class ConvNeXtGAN(nn.Module):
         self.generator = Generator()
 
     def __call__(self, img, cond, rand_cond, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 128))
+        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 32))
         generated = self.generator(z, rand_cond, training=training)
         real_output = self.discriminator(img, cond, training=training)
         fake_output = self.discriminator(generated, rand_cond, training=training)
@@ -82,7 +82,7 @@ class ConvNeXtGANGen(nn.Module):
         self.generator = Generator()
 
     def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 128))
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 32))
         return self.generator(z, cond, training=False)
 
 
