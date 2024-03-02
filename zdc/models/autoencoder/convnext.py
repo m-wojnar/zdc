@@ -126,7 +126,7 @@ if __name__ == '__main__':
         plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
 
-        save_model(params, state, f'checkpoints/convnext/epoch_{epoch + 1}.pkl.lz4')
+        save_model(params, state, f'checkpoints/vae_convnext/epoch_{epoch + 1}.pkl.lz4')
 
     for batch in batches(r_test, p_test, batch_size=batch_size):
         test_key, subkey = jax.random.split(test_key)
