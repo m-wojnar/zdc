@@ -1,5 +1,6 @@
 import os
 
+import jax
 import jax.numpy as jnp
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -25,8 +26,13 @@ def load(path, scaler, val_size=0.1, test_size=0.2):
     return r_train, r_val, r_test, p_train, p_val, p_test
 
 
-def batches(*x, batch_size=None):
+def batches(*x, batch_size=None, shuffle_key=None):
     assert batch_size is not None
+
+    if shuffle_key is not None:
+        perm = jax.random.permutation(shuffle_key, jnp.arange(len(x[0])))
+        x = tuple(x_i[perm] for x_i in x)
+
     n = len(x[0])
 
     for i in range(0, n, batch_size):

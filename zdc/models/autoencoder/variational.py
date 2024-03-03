@@ -96,7 +96,7 @@ if __name__ == '__main__':
     seed = 42
 
     key = jax.random.PRNGKey(seed)
-    init_key, train_key, val_key, test_key, plot_key = jax.random.split(key, 5)
+    init_key, train_key, val_key, test_key, shuffle_key, plot_key = jax.random.split(key, 6)
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
@@ -116,14 +116,16 @@ if __name__ == '__main__':
     os.makedirs('checkpoints/vae', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
-        for batch in batches(r_train, p_train, batch_size=batch_size):
+        shuffle_key, shuffle_train_subkey, shuffle_val_subkey = jax.random.split(shuffle_key, 3)
+
+        for batch in batches(r_train, p_train, batch_size=batch_size, shuffle_key=shuffle_train_subkey):
             train_key, subkey = jax.random.split(train_key)
             params, opt_state, loss, (state, kl, mse) = train_fn(params, (state, subkey, *batch), opt_state)
             metrics.add({'loss': loss, 'kl': kl, 'mse': mse}, 'train')
 
         metrics.log(epoch)
 
-        for batch in batches(r_val, p_val, batch_size=batch_size):
+        for batch in batches(r_val, p_val, batch_size=batch_size, shuffle_key=shuffle_val_subkey):
             val_key, subkey = jax.random.split(val_key)
             metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'val')
 
@@ -138,4 +140,4 @@ if __name__ == '__main__':
         test_key, subkey = jax.random.split(test_key)
         metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'test')
 
-    metrics.log(epochs)
+    metrics.log()

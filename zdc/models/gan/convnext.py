@@ -89,7 +89,7 @@ if __name__ == '__main__':
     seed = 42
 
     key = jax.random.PRNGKey(seed)
-    data_key, init_key, train_key, val_key, test_key, plot_key = jax.random.split(key, 6)
+    data_key, init_key, train_key, val_key, test_key, shuffle_key, plot_key = jax.random.split(key, 7)
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     f_train, f_val, f_test = tuple(map(lambda x: jax.random.permutation(*x), zip(jax.random.split(data_key, 3), (p_train, p_val, p_test))))
@@ -112,14 +112,16 @@ if __name__ == '__main__':
     os.makedirs('checkpoints/gan_convnext', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
-        for batch in batches(r_train, p_train, f_train, batch_size=batch_size):
+        shuffle_key, shuffle_train_subkey, shuffle_val_subkey = jax.random.split(shuffle_key, 3)
+
+        for batch in batches(r_train, p_train, f_train, batch_size=batch_size, shuffle_key=shuffle_train_subkey):
             train_key, subkey = jax.random.split(train_key)
             params, state, disc_opt_state, gen_opt_state, disc_loss, gen_loss = train_fn(params, state, subkey, *batch, disc_opt_state, gen_opt_state)
             metrics.add({'disc_loss': disc_loss, 'gen_loss': gen_loss}, 'train')
 
         metrics.log(epoch)
 
-        for batch in batches(r_val, p_val, f_val, batch_size=batch_size):
+        for batch in batches(r_val, p_val, f_val, batch_size=batch_size, shuffle_key=shuffle_val_subkey):
             val_key, subkey = jax.random.split(val_key)
             metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'val')
 
@@ -134,4 +136,4 @@ if __name__ == '__main__':
         test_key, subkey = jax.random.split(test_key)
         metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'test')
 
-    metrics.log(epochs)
+    metrics.log()

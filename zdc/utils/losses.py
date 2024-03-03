@@ -4,8 +4,8 @@ import optax
 from zdc.utils.wasserstein import wasserstein_channels
 
 
-def kl_loss(z_mean, z_log_var):
-    return -0.5 * (1. + z_log_var - jnp.square(z_mean) - jnp.exp(z_log_var)).sum(axis=1).mean()
+def kl_loss(mean, log_var):
+    return -0.5 * (1. + log_var - jnp.square(mean) - jnp.exp(log_var)).sum(axis=1).mean()
 
 
 def mse_loss(x, y):

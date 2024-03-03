@@ -18,7 +18,7 @@ class Metrics:
         for name, value in metrics.items():
             self.metrics[f'{name}_{type}'].append(value)
 
-    def log(self, step):
+    def log(self, step=0):
         metrics = {metric: jnp.array(values).mean().item() for metric, values in self.metrics.items()}
 
         if self.use_wandb:
