@@ -7,7 +7,7 @@ import optax
 from flax import linen as nn
 from tqdm import trange
 
-from zdc.layers import Concatenate, ConvNeXtV2Embedding, ConvNeXtV2Stage, GlobalAveragePooling, Reshape, Sampling, UpSample
+from zdc.layers import Concatenate, ConvNeXtV2Embedding, ConvNeXtV2Block, ConvNeXtV2Stage, GlobalAveragePooling, Sampling, UpSample, Reshape
 from zdc.models.autoencoder.variational import eval_fn, loss_fn
 from zdc.utils.data import load, batches
 from zdc.utils.metrics import Metrics
@@ -44,22 +44,17 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     kernel_size: int = 3
-    max_drop_rate: float = 0.33
-    depths: tuple = (1, 3, 1, 1)
-    projection_dims: tuple = (192, 96, 48, 24)
-    drop_rates = [r.tolist() for r in jnp.split(jnp.linspace(max_drop_rate, 0., sum(depths)), jnp.cumsum(jnp.array(depths))[:-1])]
+    decoder_dim: int = 128
 
     @nn.compact
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
-        x = nn.Dense(3 * 3 * self.projection_dims[0])(x)
-        x = nn.gelu(x)
-        x = Reshape((-1, 3, 3, self.projection_dims[0]))(x)
-        x = nn.LayerNorm(epsilon=1e-6)(x)
+        x = nn.Dense(6 * 6 * self.decoder_dim)(x)
+        x = Reshape((-1, 6, 6, self.decoder_dim))(x)
 
-        for projection_dim, drop_rates in zip(self.projection_dims, self.drop_rates):
+        for _ in range(3):
             x = UpSample()(x)
-            x = ConvNeXtV2Stage(1, projection_dim, self.kernel_size, drop_rates)(x, training=training)
+            x = ConvNeXtV2Block(self.decoder_dim, self.kernel_size)(x, training=training)
 
         x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
         x = nn.relu(x)
@@ -85,8 +80,9 @@ if __name__ == '__main__':
     batch_size = 128
     kl_weight = 0.7
     n_reps = 5
-    lr = 4e-4
-    epochs = 100
+    lr = 1e-5
+    weight_decay = 1e-2
+    epochs = 200
     seed = 42
 
     key = jax.random.PRNGKey(seed)
@@ -99,7 +95,7 @@ if __name__ == '__main__':
     params, state = init(model, init_key, r_sample, p_sample)
     print_model(params)
 
-    optimizer = optax.rmsprop(lr, decay=0.8, momentum=0.1)
+    optimizer = optax.adamw(lr, weight_decay=weight_decay)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=kl_weight)))

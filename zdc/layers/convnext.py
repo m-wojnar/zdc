@@ -24,8 +24,8 @@ class GlobalResponseNorm(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        gamma = self.param('gamma', lambda rng, shape: jnp.ones(shape), (1, 1, 1, self.dim))
-        beta = self.param('beta', lambda rng, shape: jnp.zeros(shape), (1, 1, 1, self.dim))
+        gamma = self.param('gamma', nn.ones_init(), (1, 1, 1, self.dim))
+        beta = self.param('beta', nn.zeros_init(), (1, 1, 1, self.dim))
 
         Gx = jnp.sqrt(jnp.square(x).sum(axis=(1, 2), keepdims=True))
         Nx = Gx / (Gx.mean(axis=-1, keepdims=True) + self.epsilon)

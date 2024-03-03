@@ -7,7 +7,7 @@ from clu.parameter_overview import get_parameter_overview
 
 def gradient_step(params, loss_params, opt_state, optimizer, loss_fn):
     (loss, aux), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, *loss_params)
-    updates, opt_state = optimizer.update(grads, opt_state)
+    updates, opt_state = optimizer.update(grads, opt_state, params=params)
     params = optax.apply_updates(params, updates)
 
     return params, opt_state, loss, aux
