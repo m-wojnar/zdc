@@ -1,13 +1,13 @@
 import jax.numpy as jnp
 
-from zdc.models import INPUT_SHAPE
+from zdc.models import RESPONSE_SHAPE
 
 
-mask_shape = (1,) + INPUT_SHAPE
+mask_shape = (1,) + RESPONSE_SHAPE
 
-coords = jnp.ogrid[0:INPUT_SHAPE[0], 0:INPUT_SHAPE[1]]
-half_x = INPUT_SHAPE[0] // 2
-half_y = INPUT_SHAPE[1] // 2
+coords = jnp.ogrid[0:RESPONSE_SHAPE[0], 0:RESPONSE_SHAPE[1]]
+half_x = RESPONSE_SHAPE[0] // 2
+half_y = RESPONSE_SHAPE[1] // 2
 
 checkerboard = (coords[0] + coords[1]) % 2 != 0
 checkerboard = checkerboard.reshape(mask_shape)
