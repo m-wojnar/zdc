@@ -109,8 +109,8 @@ if __name__ == '__main__':
     eval_fn = jax.jit(partial(eval_fn, model=model, cond_weight=cond_weight, n_reps=n_reps))
     eval_metrics = ('loss', 'mse_cond', 'mse_rec', 'mae', 'wasserstein')
 
-    metrics = Metrics(job_type='train', name='supervised_ae')
-    os.makedirs('checkpoints/supervised_ae', exist_ok=True)
+    metrics = Metrics(job_type='train', name='supervised')
+    os.makedirs('checkpoints/supervised', exist_ok=True)
 
     for epoch in trange(epochs, desc='Epochs'):
         shuffle_key, shuffle_train_subkey, shuffle_val_subkey = jax.random.split(shuffle_key, 3)
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         plot_key, subkey = jax.random.split(plot_key)
         metrics.plot_responses(r_sample, forward(model_gen, params, state, subkey, p_sample)[0], epoch)
 
-        save_model(params, state, f'checkpoints/supervised_ae/epoch_{epoch + 1}.pkl.lz4')
+        save_model(params, state, f'checkpoints/supervised/epoch_{epoch + 1}.pkl.lz4')
 
     for batch in batches(r_test, p_test, batch_size=batch_size):
         test_key, subkey = jax.random.split(test_key)
