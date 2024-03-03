@@ -136,4 +136,4 @@ if __name__ == '__main__':
         test_key, subkey = jax.random.split(test_key)
         metrics.add(dict(zip(eval_metrics, eval_fn(params, state, subkey, *batch))), 'test')
 
-    metrics.log()
+    metrics.log(epochs)
