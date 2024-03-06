@@ -37,7 +37,7 @@ class Decoder(nn.Module):
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
         x = nn.Dense(128 * 6 * 6)(x)
-        x = Reshape((-1, 6, 6, 128))(x)
+        x = Reshape((6, 6, 128))(x)
         x = UpSample()(x)
         x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
         x = UpSample()(x)

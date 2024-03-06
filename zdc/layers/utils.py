@@ -7,7 +7,7 @@ class Reshape(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        return x.reshape(self.shape)
+        return x.reshape((x.shape[0],) + self.shape)
 
 
 class Flatten(nn.Module):

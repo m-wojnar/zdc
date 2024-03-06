@@ -4,7 +4,7 @@ import jax
 import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, Sampling, TransformerEncoderBlock, Reshape, Unpatch
+from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, PatchExpand, Reshape, Sampling, TransformerEncoderBlock
 from zdc.models.autoencoder.variational import loss_fn, eval_fn
 from zdc.utils.data import load
 from zdc.utils.nn import init, forward, gradient_step
@@ -46,13 +46,15 @@ class Decoder(nn.Module):
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
         x = nn.Dense(11 * 11 * self.embedding_dim)(x)
-        x = Reshape((-1, 11 * 11, self.embedding_dim))(x)
+        x = Reshape((11 * 11, self.embedding_dim))(x)
 
         for _ in range(self.depth):
             x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
-        x = Unpatch(patch_size=4, h=44, w=44)(x)
-        x = nn.Conv(1, kernel_size=(3, 3), padding='same')(x)
+        x = PatchExpand(h=11, w=11)(x)
+        x = PatchExpand(h=22, w=22)(x)
+        x = Reshape((44, 44, self.embedding_dim // 4))(x)
+        x = nn.Dense(1)(x)
         x = nn.relu(x)
         return x
 
@@ -71,13 +73,7 @@ class ViTVAE(nn.Module):
         return reconstructed, z_mean, z_log_var
 
 
-class ViTVAEGen(nn.Module):
-    latent_dim: int = 10
-    num_heads: int = 4
-    drop_rate: float = 0.2
-    embedding_dim: int = 64
-    depth: int = 4
-
+class ViTVAEGen(ViTVAE):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))

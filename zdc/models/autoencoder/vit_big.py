@@ -17,7 +17,7 @@ if __name__ == '__main__':
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
 
-    vit_config = dict(latent_dim=128, num_heads=8, drop_rate=0.2, embedding_dim=192, depth=6)
+    vit_config = dict(latent_dim=128, num_heads=6, drop_rate=0.2, embedding_dim=192, depth=6)
     model, model_gen = ViTVAE(**vit_config), ViTVAEGen(**vit_config)
     params, state = init(model, init_key, r_sample, p_sample, print_summary=True)
 

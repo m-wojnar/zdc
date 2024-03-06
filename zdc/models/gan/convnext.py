@@ -46,7 +46,7 @@ class Generator(nn.Module):
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
         x = nn.Dense(6 * 6 * self.decoder_dim)(x)
-        x = Reshape((-1, 6, 6, self.decoder_dim))(x)
+        x = Reshape((6, 6, self.decoder_dim))(x)
 
         for _ in range(3):
             x = UpSample()(x)

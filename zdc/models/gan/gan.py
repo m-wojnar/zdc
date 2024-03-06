@@ -32,7 +32,7 @@ class Generator(nn.Module):
         x = Concatenate()(z, cond)
         x = DenseBlock(128 * 2, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
         x = DenseBlock(128 * 13 * 13, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = Reshape((-1, 13, 13, 128))(x)
+        x = Reshape((13, 13, 128))(x)
         x = UpSample()(x)
         x = ConvBlock(128, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
         x = UpSample()(x)
