@@ -23,11 +23,14 @@ class Encoder(nn.Module):
         x = Patches(patch_size=4)(img)
         x = PatchEncoder(x.shape[1], self.embedding_dim, positional_encoding=True)(x)
 
+        c = nn.Dense(self.embedding_dim)(cond)
+        c = Reshape((1, self.embedding_dim))(c)
+        x = Concatenate(axis=1)(c, x)
+
         for _ in range(self.depth):
             x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
         x = Flatten()(x)
-        x = Concatenate()(x, cond)
         x = nn.Dense(2 * self.latent_dim)(x)
         x = nn.relu(x)
         z_mean = nn.Dense(self.latent_dim)(x)
@@ -44,13 +47,18 @@ class Decoder(nn.Module):
 
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x = Concatenate()(z, cond)
-        x = nn.Dense(11 * 11 * self.embedding_dim)(x)
-        x = Reshape((11 * 11, self.embedding_dim))(x)
+        x = nn.Dense(11 * 11)(z)
+        x = Reshape((11 * 11, 1))(x)
+        x = PatchEncoder(11 * 11, self.embedding_dim, positional_encoding=True)(x)
+
+        c = nn.Dense(self.embedding_dim)(cond)
+        c = Reshape((1, self.embedding_dim))(c)
+        x = Concatenate(axis=1)(c, x)
 
         for _ in range(self.depth):
             x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
+        x = x[:, 1:, :]
         x = PatchExpand(h=11, w=11)(x)
         x = PatchExpand(h=22, w=22)(x)
         x = Reshape((44, 44, self.embedding_dim // 4))(x)
@@ -90,7 +98,9 @@ if __name__ == '__main__':
     model, model_gen = ViTVAE(), ViTVAEGen()
     params, state = init(model, init_key, r_sample, p_sample, print_summary=True)
 
-    optimizer = optax.adam(1e-4)
+    train_steps = 100 * len(r_train) // 128
+    lr = optax.cosine_onecycle_schedule(train_steps, peak_value=3e-4, pct_start=0.1, div_factor=20, final_div_factor=100)
+    optimizer = optax.adam(lr)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=0.7)))
