@@ -4,7 +4,7 @@ import jax
 import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, Sampling, TransformerEncoderBlock, Reshape, PatchExpand
+from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, Sampling, TransformerEncoderBlock, Reshape, Unpatch
 from zdc.models.autoencoder.variational import loss_fn, eval_fn
 from zdc.utils.data import load
 from zdc.utils.nn import init, forward, gradient_step
@@ -12,11 +12,11 @@ from zdc.utils.train import train_loop
 
 
 class Encoder(nn.Module):
-    latent_dim: int = 10
-    num_heads: int = 4
-    drop_rate: float = 0.2
-    embedding_dim: int = 64
-    depth: int = 4
+    latent_dim: int
+    num_heads: int
+    drop_rate: float
+    embedding_dim: int
+    depth: int
 
     @nn.compact
     def __call__(self, img, cond, training=True):
@@ -37,10 +37,10 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    num_heads: int = 4
-    drop_rate: float = 0.2
-    embedding_dim: int = 64
-    depth: int = 4
+    num_heads: int
+    drop_rate: float
+    embedding_dim: int
+    depth: int
 
     @nn.compact
     def __call__(self, z, cond, training=True):
@@ -51,28 +51,37 @@ class Decoder(nn.Module):
         for _ in range(self.depth):
             x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
-        x = PatchExpand(h=11, w=11)(x)
-        x = PatchExpand(h=22, w=22)(x)
-        x = Reshape((-1, 44, 44, self.embedding_dim // 4))(x)
-        x = nn.Dense(1)(x)
+        x = Unpatch(patch_size=4, h=44, w=44)(x)
+        x = nn.Conv(1, kernel_size=(3, 3), padding='same')(x)
         x = nn.relu(x)
-        x = Reshape((-1, 44, 44, 1))(x)
         return x
 
 
 class ViTVAE(nn.Module):
+    latent_dim: int = 10
+    num_heads: int = 4
+    drop_rate: float = 0.2
+    embedding_dim: int = 64
+    depth: int = 4
+
     @nn.compact
     def __call__(self, img, cond, training=True):
-        z_mean, z_log_var, z = Encoder()(img, cond, training=training)
-        reconstructed = Decoder()(z, cond, training=training)
+        z_mean, z_log_var, z = Encoder(self.latent_dim, self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(img, cond, training=training)
+        reconstructed = Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(z, cond, training=training)
         return reconstructed, z_mean, z_log_var
 
 
 class ViTVAEGen(nn.Module):
+    latent_dim: int = 10
+    num_heads: int = 4
+    drop_rate: float = 0.2
+    embedding_dim: int = 64
+    depth: int = 4
+
     @nn.compact
     def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        return Decoder()(z, cond, training=False)
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
+        return Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(z, cond, training=False)
 
 
 if __name__ == '__main__':
