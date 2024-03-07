@@ -26,6 +26,10 @@ def load(path, scaler, val_size=0.1, test_size=0.2):
     return r_train, r_val, r_test, p_train, p_val, p_test
 
 
+def get_samples(*xs):
+    return jax.tree_map(lambda x: x[50:100:4], xs)
+
+
 def batches(*x, batch_size=None, shuffle_key=None):
     assert batch_size is not None
 

@@ -4,8 +4,8 @@ import jax
 import optax
 
 from zdc.models.autoencoder.supervised import SupervisedAE, SupervisedAEGen, loss_fn, eval_fn
-from zdc.utils.data import load
-from zdc.utils.nn import init, forward, gradient_step
+from zdc.utils.data import get_samples, load
+from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 
 
@@ -14,7 +14,7 @@ if __name__ == '__main__':
     init_key, train_key = jax.random.split(key)
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
-    r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
+    r_sample, p_sample = get_samples(r_train, p_train)
 
     model, model_gen = SupervisedAE(), SupervisedAEGen()
     params, state = init(model, init_key, r_sample, print_summary=True)

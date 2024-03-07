@@ -7,8 +7,8 @@ from flax import linen as nn
 from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, PatchExpand, Reshape, TransformerEncoderBlock
 from zdc.models import PARTICLE_SHAPE
 from zdc.models.autoencoder.supervised import loss_fn, eval_fn
-from zdc.utils.data import load
-from zdc.utils.nn import init, forward, gradient_step
+from zdc.utils.data import get_samples, load
+from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 
 
@@ -62,7 +62,7 @@ class Decoder(nn.Module):
         return x
 
 
-class ViTVAE(nn.Module):
+class ViTSupervisedAE(nn.Module):
     latent_dim: int = 10
     num_heads: int = 4
     drop_rate: float = 0.2
@@ -77,7 +77,7 @@ class ViTVAE(nn.Module):
         return reconstructed, cond
 
 
-class ViTVAEGen(ViTVAE):
+class ViTSupervisedAEGen(ViTSupervisedAE):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
@@ -89,14 +89,12 @@ if __name__ == '__main__':
     init_key, train_key = jax.random.split(key)
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
-    r_sample, p_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train))
+    r_sample, p_sample = get_samples(r_train, p_train)
 
-    model, model_gen = ViTVAE(), ViTVAEGen()
+    model, model_gen = ViTSupervisedAE(), ViTSupervisedAEGen()
     params, state = init(model, init_key, r_sample, print_summary=True)
 
-    train_steps = 100 * len(r_train) // 128
-    lr = optax.cosine_onecycle_schedule(train_steps, peak_value=3e-4, pct_start=0.1, div_factor=20, final_div_factor=100)
-    optimizer = optax.adam(lr)
+    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, cond_weight=1.)))

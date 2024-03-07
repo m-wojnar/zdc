@@ -46,3 +46,9 @@ def save_model(params, state, path):
 def load_model(path):
     with lz4.frame.open(path, 'rb') as f:
         return cloudpickle.load(f)
+
+
+def opt_with_cosine_schedule(optimizer, peak_value, pct_start=0.1, div_factor=25, final_div_factor=100, n_examples=214746, epochs=100, batch_size=128):
+    train_steps = epochs * n_examples // batch_size
+    lr = optax.cosine_onecycle_schedule(train_steps, peak_value=peak_value, pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor)
+    return optimizer(lr)

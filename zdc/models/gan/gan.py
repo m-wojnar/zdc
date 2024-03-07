@@ -6,9 +6,9 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
-from zdc.utils.data import load
+from zdc.utils.data import get_samples, load
 from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss, xentropy_loss
-from zdc.utils.nn import init, forward, gradient_step, get_layers
+from zdc.utils.nn import init, forward, gradient_step, get_layers, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 from zdc.utils.wasserstein import sum_channels_parallel
 
@@ -119,14 +119,14 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     f_train, f_val, f_test = tuple(map(lambda x: jax.random.permutation(*x), zip(jax.random.split(data_key, 3), (p_train, p_val, p_test))))
-    r_sample, p_sample, f_sample = jax.tree_map(lambda x: x[20:30], (r_train, p_train, f_train))
+    r_sample, p_sample, f_sample = get_samples(r_train, p_train, f_train)
 
     model, model_gen = GAN(), GANGen()
     params, state = init(model, init_key, r_sample, p_sample, f_sample, print_summary=True)
 
-    disc_optimizer = optax.adam(1e-4)
+    disc_optimizer = opt_with_cosine_schedule(optax.adam, 1e-4)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
-    gen_optimizer = optax.adam(1e-4)
+    gen_optimizer = opt_with_cosine_schedule(optax.adam, 1e-4)
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
