@@ -85,7 +85,7 @@ class MLPMixerVAEGen(MLPMixerVAE):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
-        return Decoder(self.tokens_dim, self.channels_dim, self.depth)(z, cond, training=False)
+        return Decoder(self.hidden_dim, self.tokens_dim, self.channels_dim, self.depth)(z, cond, training=False)
 
 
 if __name__ == '__main__':
