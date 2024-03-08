@@ -20,7 +20,6 @@ class TransformerEncoderBlock(nn.Module):
     num_heads: int
     hidden_dim: int
     drop_rate: float
-    epsilon: float = 1e-6
 
     @nn.compact
     def __call__(self, x, training=True):
@@ -30,7 +29,7 @@ class TransformerEncoderBlock(nn.Module):
         x = x + residual
 
         residual = x
-        x = nn.LayerNorm(self.epsilon)(x)
+        x = nn.LayerNorm()(x)
         x = FeedForwardBlock(self.hidden_dim, self.drop_rate)(x, training=training)
         x = x + residual
 

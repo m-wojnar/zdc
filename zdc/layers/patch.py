@@ -51,7 +51,6 @@ class PatchEncoder(nn.Module):
 class PatchExpand(nn.Module):
     h: int
     w: int
-    epsilon: float = 1e-6
 
     @nn.compact
     def __call__(self, x):
@@ -59,7 +58,7 @@ class PatchExpand(nn.Module):
         x = x.reshape(b, self.h, self.w, c)
         x = nn.Dense(2 * c)(x)
         x = x.reshape(b, 2 * self.h, 2 * self.w, c // 2)
-        x = nn.LayerNorm(self.epsilon)(x)
+        x = nn.LayerNorm()(x)
         x = x.reshape(b, -1, c // 2)
         return x
 
@@ -67,7 +66,6 @@ class PatchExpand(nn.Module):
 class PatchMerge(nn.Module):
     h: int
     w: int
-    epsilon: float = 1e-6
 
     @nn.compact
     def __call__(self, x):
@@ -81,7 +79,7 @@ class PatchMerge(nn.Module):
         x2 = x[:, 0::2, 1::2, :]
         x3 = x[:, 1::2, 1::2, :]
         x = jnp.concatenate([x0, x1, x2, x3], axis=-1)
-        x = nn.LayerNorm(self.epsilon)(x)
+        x = nn.LayerNorm()(x)
         x = nn.Dense(2 * c)(x)
         x = x.reshape(b, -1, 2 * c)
         return x

@@ -28,7 +28,7 @@ class Discriminator(nn.Module):
             x = ConvNeXtV2Stage(patch_size, projection_dim, self.kernel_size, drop_rates)(x, training=training)
 
         x = GlobalAveragePooling()(x)
-        x = nn.LayerNorm(epsilon=1e-6)(x)
+        x = nn.LayerNorm()(x)
         x = Concatenate()(x, cond)
         x = nn.Dense(256)(x)
         x = nn.gelu(x)
