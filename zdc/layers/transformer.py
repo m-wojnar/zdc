@@ -24,7 +24,7 @@ class TransformerEncoderBlock(nn.Module):
     @nn.compact
     def __call__(self, x, training=True):
         residual = x
-        x = nn.LayerNorm(self.epsilon)(x)
+        x = nn.LayerNorm()(x)
         x = nn.MultiHeadDotProductAttention(num_heads=self.num_heads, qkv_features=x.shape[-1])(x)
         x = x + residual
 

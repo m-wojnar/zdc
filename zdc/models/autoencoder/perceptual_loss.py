@@ -53,7 +53,7 @@ if __name__ == '__main__':
     perceptual_model = fm.VGG16(include_head=False, pretrained='imagenet')
     perceptual_params = perceptual_model.init(key, r_sample)
     perceptual_model_fn = lambda x: perceptual_model.apply(perceptual_params, x, train=False)
-    perprocess_fn = lambda x: x / x.max(axis=(1, 2, 3), keepdims=True)
+    perprocess_fn = lambda x: x / (x.max(axis=(1, 2, 3), keepdims=True) + 1e-6)
 
     loss_fn = partial(loss_fn, model=model, image_processor=perprocess_fn, perceptual_model=perceptual_model_fn, perceptual_weight=1.0, kl_weight=0.7)
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=loss_fn))
