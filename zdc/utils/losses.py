@@ -22,3 +22,9 @@ def wasserstein_loss(ch_true, ch_pred):
 
 def xentropy_loss(x, y):
     return optax.sigmoid_binary_cross_entropy(x, y).reshape(x.shape[0], -1).sum(axis=-1).mean()
+
+
+def perceptual_loss(img, reconstructed, image_processor, perceptual_model):
+    img = perceptual_model(image_processor(img))
+    reconstructed = perceptual_model(image_processor(reconstructed))
+    return mse_loss(img, reconstructed)

@@ -13,6 +13,7 @@ dependencies = [
   "cloudpickle~=3.0.0",
   "clu~=0.0.11",
   "flax~=0.8.1",
+  "flaxmodels@git+https://github.com/matthias-wright/flaxmodels",
   "jax~=0.4.25",
   "jaxlib~=0.4.25",
   "lz4~=4.3.3",
