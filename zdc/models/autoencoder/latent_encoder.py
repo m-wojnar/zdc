@@ -24,13 +24,12 @@ class Encoder(nn.Module):
     latent_dim: int = 10
 
     @nn.compact
-    def __call__(self, img, cond, training=True):
+    def __call__(self, img, training=True):
         x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
         x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
         x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
         x = nn.leaky_relu(x, negative_slope=0.1)
         x = Flatten()(x)
-        x = Concatenate()(x, cond)
         x = nn.Dense(256)(x)
         x = nn.relu(x)
         x = nn.Dense(self.latent_dim)(x)
@@ -41,9 +40,9 @@ class LEVAE(nn.Module):
     @nn.compact
     def __call__(self, img, cond, training=True):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        enc = Encoder()(img, cond, training=training)
+        enc = Encoder()(img, training=training)
         le = LatentEncoder()(cond, training=training)
-        reconstructed = Decoder()(z, enc, training=training)
+        reconstructed = Decoder()(z, le, training=training)
         return reconstructed, enc, le
 
 
