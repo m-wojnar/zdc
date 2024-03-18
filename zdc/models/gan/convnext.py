@@ -6,7 +6,7 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import Concatenate, ConvNeXtV2Block, ConvNeXtV2Embedding, ConvNeXtV2Stage, GlobalAveragePooling, Reshape, UpSample
-from zdc.models.gan.gan import eval_fn, train_fn
+from zdc.models.gan.gan import train_fn
 from zdc.utils.data import get_samples, load
 from zdc.utils.nn import init, forward, get_layers, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
@@ -96,13 +96,10 @@ if __name__ == '__main__':
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
-    eval_fn = jax.jit(partial(eval_fn, model=model))
-    plot_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
-
-    train_metrics = ('disc_loss', 'gen_loss')
-    eval_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc', 'mse', 'mae', 'wasserstein')
+    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
+    train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
-        'convnext_gan', train_fn, eval_fn, plot_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test), r_sample, p_sample,
-        train_metrics, eval_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
+        'convnext_gan', train_fn, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test), r_sample, p_sample,
+        train_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
     )

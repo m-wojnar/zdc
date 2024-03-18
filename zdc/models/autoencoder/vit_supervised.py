@@ -6,7 +6,7 @@ from flax import linen as nn
 
 from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, PatchExpand, Reshape, TransformerEncoderBlock
 from zdc.models import PARTICLE_SHAPE
-from zdc.models.autoencoder.supervised import loss_fn, eval_fn
+from zdc.models.autoencoder.supervised import loss_fn
 from zdc.utils.data import get_samples, load
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
@@ -98,13 +98,10 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, cond_weight=1.)))
-    eval_fn = jax.jit(partial(eval_fn, model=model, cond_weight=1.))
-    plot_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
-
+    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
     train_metrics = ('loss', 'mse_cond', 'mse_rec')
-    eval_metrics = ('loss', 'mse_cond', 'mse_rec', 'mae', 'wasserstein')
 
     train_loop(
-        'vit_supervised', train_fn, eval_fn, plot_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
-        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'vit_supervised', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
+        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )

@@ -1,17 +1,15 @@
 from functools import partial
 
 import jax
-import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
 from zdc.layers import MLP, Flatten, Concatenate
 from zdc.models.autoencoder.variational import Decoder
 from zdc.utils.data import get_samples, load
-from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss
+from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
-from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class LatentEncoder(nn.Module):
@@ -65,20 +63,6 @@ def loss_fn(params, state, key, img, cond, model, enc_weight):
     return loss, (state, loss, mse_enc, mse_rec)
 
 
-def eval_fn(params, state, key, img, cond, model, enc_weight, n_reps=5):
-    def _eval_fn(subkey):
-        (reconstructed, enc, le), _ = forward(model, params, state, subkey, img, cond, False)
-        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(reconstructed)
-        mse_enc = mse_loss(enc, le)
-        mse_rec = mse_loss(img, reconstructed)
-        mae = mae_loss(ch_true, ch_pred) / 5
-        wasserstein = wasserstein_loss(ch_true, ch_pred)
-        return enc_weight * mse_enc + mse_rec, mse_enc, mse_rec, mae, wasserstein
-
-    results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
-    return jnp.array(results).mean(axis=1)
-
-
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
@@ -93,13 +77,10 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, enc_weight=10.)))
-    eval_fn = jax.jit(partial(eval_fn, model=model, enc_weight=10.))
-    plot_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
-
+    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
     train_metrics = ('loss', 'mse_enc', 'mse_rec')
-    eval_metrics = ('loss', 'mse_enc', 'mse_rec', 'mae', 'wasserstein')
 
     train_loop(
-        'latent_encoder', train_fn, eval_fn, plot_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
-        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'latent_encoder', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
+        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )

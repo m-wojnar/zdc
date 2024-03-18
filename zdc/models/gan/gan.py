@@ -7,10 +7,9 @@ from flax import linen as nn
 
 from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
 from zdc.utils.data import get_samples, load
-from zdc.utils.losses import mse_loss, mae_loss, wasserstein_loss, xentropy_loss
+from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, get_layers, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
-from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class Discriminator(nn.Module):
@@ -77,40 +76,25 @@ def train_fn(params, carry, opt_state, model, disc_optimizer, gen_optimizer):
     def _disc_loss_fn(params, other_params, state):
         (_, real_output, fake_output), state = forward(model, params | other_params, state, key, img, cond, rand_cond)
         loss = disc_loss_fn(real_output, fake_output)
-        return loss, (state, loss)
+        disc_real_acc = (real_output > 0).mean()
+        disc_fake_acc = (fake_output < 0).mean()
+        return loss, (state, loss, disc_real_acc, disc_fake_acc)
 
     def _gen_loss_fn(params, other_params, state):
         (_, _, fake_output), state = forward(model, params | other_params, state, key, img, cond, rand_cond)
         loss = gen_loss_fn(fake_output)
-        return loss, (state, loss)
+        gen_acc = (fake_output > 0).mean()
+        return loss, (state, loss, gen_acc)
 
     state, key, img, cond, rand_cond = carry
     disc_opt_state, gen_opt_state = opt_state
 
-    disc_params, disc_opt_state, (_, disc_loss) = gradient_step(
+    disc_params, disc_opt_state, (_, disc_loss, disc_real_acc, disc_fake_acc) = gradient_step(
         get_layers(params, 'discriminator'), (get_layers(params, 'generator'), state), disc_opt_state, disc_optimizer, _disc_loss_fn)
-    gen_params, gen_opt_state, (state, gen_loss) = gradient_step(
+    gen_params, gen_opt_state, (state, gen_loss, gen_acc) = gradient_step(
         get_layers(params, 'generator'), (get_layers(params, 'discriminator'), state), gen_opt_state, gen_optimizer, _gen_loss_fn)
 
-    return disc_params | gen_params, (disc_opt_state, gen_opt_state), (state, disc_loss, gen_loss)
-
-
-def eval_fn(params, state, key, img, cond, rand_cond, model, n_reps=5):
-    def _eval_fn(subkey):
-        (generated, real_output, fake_output), _ = forward(model, params, state, subkey, img, cond, rand_cond, False)
-        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(generated)
-        disc_loss = disc_loss_fn(real_output, fake_output)
-        gen_loss = gen_loss_fn(fake_output)
-        disc_real_acc = (real_output > 0).mean()
-        disc_fake_acc = (fake_output < 0).mean()
-        gen_acc = (fake_output > 0).mean()
-        mse = mse_loss(img, generated)
-        mae = mae_loss(ch_true, ch_pred) / 5
-        wasserstein = wasserstein_loss(ch_true, ch_pred)
-        return disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc, mse, mae, wasserstein
-
-    results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
-    return jnp.array(results).mean(axis=1)
+    return disc_params | gen_params, (disc_opt_state, gen_opt_state), (state, disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc)
 
 
 if __name__ == '__main__':
@@ -130,13 +114,10 @@ if __name__ == '__main__':
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
-    eval_fn = jax.jit(partial(eval_fn, model=model))
-    plot_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
-
-    train_metrics = ('disc_loss', 'gen_loss')
-    eval_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc', 'mse', 'mae', 'wasserstein')
+    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
+    train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
-        'gan', train_fn, eval_fn, plot_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test), r_sample, p_sample,
-        train_metrics, eval_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
+        'gan', train_fn, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test), r_sample, p_sample,
+        train_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
     )

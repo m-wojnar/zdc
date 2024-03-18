@@ -1,16 +1,14 @@
 from functools import partial
 
 import jax
-import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
 from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, Sampling, UpSample
 from zdc.utils.data import get_samples, load
-from zdc.utils.losses import kl_loss, mse_loss, mae_loss, wasserstein_loss
+from zdc.utils.losses import kl_loss, mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
-from zdc.utils.wasserstein import sum_channels_parallel
 
 
 class Encoder(nn.Module):
@@ -72,20 +70,6 @@ def loss_fn(params, state, key, img, cond, model, kl_weight):
     return loss, (state, loss, kl, mse)
 
 
-def eval_fn(params, state, key, img, cond, model, kl_weight, n_reps=5):
-    def _eval_fn(subkey):
-        (reconstructed, z_mean, z_log_var), _ = forward(model, params, state, subkey, img, cond, False)
-        ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(reconstructed)
-        kl = kl_loss(z_mean, z_log_var)
-        mse = mse_loss(img, reconstructed)
-        mae = mae_loss(ch_true, ch_pred) / 5
-        wasserstein = wasserstein_loss(ch_true, ch_pred)
-        return kl_weight * kl + mse, kl, mse, mae, wasserstein
-
-    results = jax.vmap(_eval_fn)(jax.random.split(key, n_reps))
-    return jnp.array(results).mean(axis=1)
-
-
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
@@ -100,13 +84,10 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=0.7)))
-    eval_fn = jax.jit(partial(eval_fn, model=model, kl_weight=0.7))
-    plot_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
-
+    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
     train_metrics = ('loss', 'kl', 'mse')
-    eval_metrics = ('loss', 'kl', 'mse', 'mae', 'wasserstein')
 
     train_loop(
-        'variational', train_fn, eval_fn, plot_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
-        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'variational', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test), r_sample, p_sample,
+        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )
