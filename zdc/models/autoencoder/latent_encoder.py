@@ -1,10 +1,11 @@
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import MLP, Flatten, Concatenate
+from zdc.layers import Flatten, Concatenate, DenseBlock
 from zdc.models.autoencoder.variational import Decoder
 from zdc.utils.data import get_samples, load
 from zdc.utils.losses import mse_loss
@@ -13,15 +14,22 @@ from zdc.utils.train import train_loop
 
 
 class LatentEncoder(nn.Module):
-    latent_dim: int = 10
+    latent_dim: int = 20
+    hidden_dim: int = 128
 
     @nn.compact
-    def __call__(self, cond, training=True):
-        return MLP([64, 64, self.latent_dim])(cond)
+    def __call__(self, z, cond, training=True):
+        x1 = DenseBlock(2 * self.hidden_dim, negative_slope=0.2)(z)
+        x2 = DenseBlock(self.hidden_dim, negative_slope=0.2)(cond)
+        x = Concatenate()(x1, x2)
+        x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
+        x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.latent_dim, negative_slope=0.2)(x)
+        return x
 
 
 class Encoder(nn.Module):
-    latent_dim: int = 10
+    latent_dim: int = 20
 
     @nn.compact
     def __call__(self, img, training=True):
@@ -30,19 +38,22 @@ class Encoder(nn.Module):
         x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
         x = nn.leaky_relu(x, negative_slope=0.1)
         x = Flatten()(x)
-        x = nn.Dense(256)(x)
-        x = nn.relu(x)
         x = nn.Dense(self.latent_dim)(x)
+        x = nn.relu(x)
         return x
 
 
 class LEVAE(nn.Module):
+    noise_dim: int = 10
+
     @nn.compact
     def __call__(self, img, cond, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.noise_dim))
+        none = jnp.zeros((cond.shape[0], 0))
+
         enc = Encoder()(img, training=training)
-        le = LatentEncoder()(cond, training=training)
-        reconstructed = Decoder()(z, le, training=training)
+        le = LatentEncoder()(z, cond, training=training)
+        reconstructed = Decoder()(none, enc, training=training)
         return reconstructed, enc, le
 
 
@@ -50,8 +61,10 @@ class LEVAEGen(nn.Module):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        le = LatentEncoder()(cond, training=False)
-        return Decoder()(z, le, training=False)
+        none = jnp.zeros((cond.shape[0], 0))
+
+        le = LatentEncoder()(z, cond, training=False)
+        return Decoder()(none, le, training=False)
 
 
 def loss_fn(params, state, key, img, cond, model, enc_weight):
