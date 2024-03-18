@@ -7,11 +7,11 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 def load(path, scaler, val_size=0.1, test_size=0.2):
-    responses = jnp.load(os.path.join(path, 'data_nonrandom_responses.npz'))['arr_0'].astype(float)[:1000]
+    responses = jnp.load(os.path.join(path, 'data_nonrandom_responses.npz'))['arr_0'].astype(float)
     responses = responses[..., None]
     responses = jnp.log(responses + 1)
 
-    particles = jnp.load(os.path.join(path, 'data_nonrandom_particles.npz'))['arr_0'].astype(float)[:1000]
+    particles = jnp.load(os.path.join(path, 'data_nonrandom_particles.npz'))['arr_0'].astype(float)
 
     if scaler == 'standard':
         particles = StandardScaler().fit_transform(particles)
