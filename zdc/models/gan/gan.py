@@ -6,7 +6,7 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
-from zdc.utils.data import get_samples, load
+from zdc.utils.data import load
 from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, get_layers, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
@@ -103,10 +103,9 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     f_train, f_val, f_test = tuple(map(lambda x: jax.random.permutation(*x), zip(jax.random.split(data_key, 3), (p_train, p_val, p_test))))
-    r_sample, p_sample, f_sample = get_samples(r_train, p_train, f_train)
 
     model, model_gen = GAN(), GANGen()
-    params, state = init(model, init_key, r_sample, p_sample, f_sample, print_summary=True)
+    params, state = init(model, init_key, r_train[:5], p_train[:5], f_train[:5], print_summary=True)
 
     disc_optimizer = optax.adam(3e-5, b1=0.5, b2=0.9)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
@@ -118,6 +117,6 @@ if __name__ == '__main__':
     train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
-        'gan', train_fn, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test), r_sample, p_sample,
+        'gan', train_fn, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test),
         train_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
     )
