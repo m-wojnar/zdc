@@ -108,9 +108,9 @@ if __name__ == '__main__':
     model, model_gen = GAN(), GANGen()
     params, state = init(model, init_key, r_sample, p_sample, f_sample, print_summary=True)
 
-    disc_optimizer = opt_with_cosine_schedule(optax.adam, 1e-4)
+    disc_optimizer = optax.adam(3e-5, b1=0.5, b2=0.9)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
-    gen_optimizer = opt_with_cosine_schedule(optax.adam, 1e-4)
+    gen_optimizer = optax.adam(1e-4, b1=0.5, b2=0.9)
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))

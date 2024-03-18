@@ -84,7 +84,7 @@ if __name__ == '__main__':
     model, model_gen = ConvNeXtVAE(), ConvNeXtVAEGen()
     params, state = init(model, init_key, r_sample, p_sample, print_summary=True)
 
-    optimizer = opt_with_cosine_schedule(optax.adam, 1e-4)
+    optimizer = opt_with_cosine_schedule(optax.adam, 3e-5)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=0.7)))
