@@ -5,7 +5,7 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import Flatten, Patches, PatchEncoder, PatchExpand, Reshape, TransformerEncoderBlock
-from zdc.models.autoencoder.latent_encoder import loss_fn, LatentEncoder
+from zdc.models.autoencoder.noise_generator import loss_fn, NoiseGenerator
 from zdc.utils.data import load
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
@@ -55,7 +55,7 @@ class Decoder(nn.Module):
         return x
 
 
-class LEViT(nn.Module):
+class NGViT(nn.Module):
     latent_dim: int = 20
     noise_dim: int = 10
     num_heads: int = 4
@@ -67,17 +67,17 @@ class LEViT(nn.Module):
     def __call__(self, img, cond, training=True):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
         enc = Encoder(self.latent_dim, self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(img, training=training)
-        le = LatentEncoder()(z, cond, training=training)
-        reconstructed = Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(le, training=training)
-        return reconstructed, enc, le
+        ng = NoiseGenerator()(z, cond, training=training)
+        reconstructed = Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(ng, training=training)
+        return reconstructed, enc, ng
 
 
-class LEViTGen(LEViT):
+class NGViTGen(NGViT):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
-        le = LatentEncoder()(z, cond, training=False)
-        return Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(le, training=False)
+        ng = NoiseGenerator()(z, cond, training=False)
+        return Decoder(self.num_heads, self.drop_rate, self.embedding_dim, self.depth)(ng, training=False)
 
 
 if __name__ == '__main__':
@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
-    model, model_gen = LEViT(), LEViTGen()
+    model, model_gen = NGViT(), NGViTGen()
     params, state = init(model, init_key, r_train[:5], p_train[:5], print_summary=True)
 
     optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
@@ -97,6 +97,6 @@ if __name__ == '__main__':
     train_metrics = ('loss', 'mse_enc', 'mse_rec')
 
     train_loop(
-        'vit_latent_encoder', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
+        'vit_noise_generator', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
         train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )

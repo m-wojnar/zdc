@@ -13,7 +13,7 @@ from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 
 
-class LatentEncoder(nn.Module):
+class NoiseGenerator(nn.Module):
     latent_dim: int = 20
     hidden_dim: int = 128
 
@@ -43,28 +43,24 @@ class Encoder(nn.Module):
         return x
 
 
-class LEVAE(nn.Module):
+class NGVAE(nn.Module):
     noise_dim: int = 10
 
     @nn.compact
     def __call__(self, img, cond, training=True):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.noise_dim))
-        none = jnp.zeros((cond.shape[0], 0))
-
         enc = Encoder()(img, training=training)
-        le = LatentEncoder()(z, cond, training=training)
-        reconstructed = Decoder()(none, enc, training=training)
-        return reconstructed, enc, le
+        ng = NoiseGenerator()(z, cond, training=training)
+        reconstructed = Decoder()(jnp.zeros((cond.shape[0], 0)), enc, training=training)
+        return reconstructed, enc, ng
 
 
-class LEVAEGen(nn.Module):
+class NGVAEGen(nn.Module):
     @nn.compact
     def __call__(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        none = jnp.zeros((cond.shape[0], 0))
-
-        le = LatentEncoder()(z, cond, training=False)
-        return Decoder()(none, le, training=False)
+        ng = NoiseGenerator()(z, cond, training=False)
+        return Decoder()(jnp.zeros((cond.shape[0], 0)), ng, training=False)
 
 
 def loss_fn(params, state, key, img, cond, model, enc_weight):
@@ -81,7 +77,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
-    model, model_gen = LEVAE(), LEVAEGen()
+    model, model_gen = NGVAE(), NGVAEGen()
     params, state = init(model, init_key, r_train[:5], p_train[:5], print_summary=True)
 
     optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
@@ -92,6 +88,6 @@ if __name__ == '__main__':
     train_metrics = ('loss', 'mse_enc', 'mse_rec')
 
     train_loop(
-        'latent_encoder', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
+        'noise_generator', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
         train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )
