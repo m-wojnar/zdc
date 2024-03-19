@@ -56,18 +56,18 @@ class VQVAE(nn.Module):
         discrete = jax.nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.codebook.embedding)
         quantized = quantized.reshape(encoded.shape)
-        reconstructed = self.decoder(quantized, training=training)
+        quantized_sg = encoded + jax.lax.stop_gradient(quantized - encoded)
+        reconstructed = self.decoder(quantized_sg, training=training)
         return reconstructed, encoded, discrete, quantized
 
 
 def loss_fn(params, state, key, img, cond, model, commitment_cost):
     (reconstructed, encoded, discrete, quantized), state = forward(model, params, state, key, img)
-    avg_prob = jnp.mean(discrete, axis=0)
-    perplexity = jnp.exp(-jnp.sum(avg_prob * jnp.log(avg_prob + 1e-10)))
-    quantized = encoded + jax.lax.stop_gradient(quantized - encoded)
     e_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)
     q_loss = mse_loss(quantized, jax.lax.stop_gradient(encoded))
     mse = mse_loss(img, reconstructed)
+    avg_prob = jnp.mean(discrete, axis=0)
+    perplexity = jnp.exp(-jnp.sum(avg_prob * jnp.log(avg_prob + 1e-10)))
     loss = mse + commitment_cost * e_loss + q_loss
     return loss, (state, loss, mse, e_loss, q_loss, perplexity)
 
