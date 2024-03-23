@@ -8,8 +8,8 @@ from flax import linen as nn
 from zdc.layers import Concatenate, ConvBlock, DenseBlock, Flatten, Reshape, UpSample
 from zdc.utils.data import load
 from zdc.utils.losses import xentropy_loss
-from zdc.utils.nn import init, forward, gradient_step, get_layers, opt_with_cosine_schedule
-from zdc.utils.train import train_loop
+from zdc.utils.nn import init, forward, gradient_step, get_layers
+from zdc.utils.train import train_loop, default_generate_fn
 
 
 class Discriminator(nn.Module):
@@ -113,10 +113,10 @@ if __name__ == '__main__':
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
-    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
+    generate_fn = jax.jit(default_generate_fn(model_gen))
     train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
-        'gan', train_fn, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test),
-        train_metrics, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
+        'gan', train_fn, None, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test),
+        train_metrics, None, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
     )

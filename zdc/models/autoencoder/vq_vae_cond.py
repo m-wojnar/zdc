@@ -9,7 +9,8 @@ from zdc.layers import DenseBlock, Reshape
 from zdc.models import PARTICLE_SHAPE
 from zdc.models.autoencoder.vq_vae import loss_fn
 from zdc.utils.data import load
-from zdc.utils.nn import init, gradient_step, opt_with_cosine_schedule
+from zdc.utils.losses import mse_loss
+from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 
 
@@ -69,12 +70,16 @@ class VQVAE(nn.Module):
         return reconstructed, encoded, discrete, quantized
 
 
+def eval_fn(generated, *dataset):
+    cond, _ = dataset
+    return (mse_loss(cond, generated),)
+
+
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, _, _, p_train, _, _ = load('../../../data', 'standard')
-    empty_dataset = (jnp.zeros((0, 0)),)
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
     model = VQVAE()
     params, state = init(model, init_key, p_train[:5], print_summary=True)
@@ -83,9 +88,10 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, commitment_cost=0.25)))
+    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0])[0][0])
     train_metrics = ('loss', 'mse', 'e_loss', 'q_loss', 'perplexity')
 
     train_loop(
-        'vq_vae_cond', train_fn, None, (p_train, r_train), empty_dataset, empty_dataset,
-        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'vq_vae_cond', train_fn, eval_fn, generate_fn, (p_train, r_train), (p_val, r_val), (p_test, r_test),
+        train_metrics, ('mse',), params, state, opt_state, train_key, epochs=100, batch_size=128
     )

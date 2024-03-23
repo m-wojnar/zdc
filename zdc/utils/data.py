@@ -44,4 +44,4 @@ def batches(*x, batch_size=None, shuffle_key=None):
     n = len(x[0])
 
     for i in range(0, n, batch_size):
-        yield (x_i[i:i + batch_size] for x_i in x)
+        yield tuple(x_i[i:i + batch_size] for x_i in x)

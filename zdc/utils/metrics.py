@@ -5,6 +5,8 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import wandb
 
+from zdc.models import RESPONSE_SHAPE
+
 
 class Metrics:
     def __init__(self, job_type, name, use_wandb=True):
@@ -30,6 +32,9 @@ class Metrics:
         self.metrics = defaultdict(list)
 
     def plot_responses(self, responses, generated, step, n=7):
+        if generated.shape[1:] != RESPONSE_SHAPE:
+            return
+
         fig, axs = plt.subplots(2, n, figsize=(2 * n + 1, 4), dpi=200)
 
         for i in range(2 * n):

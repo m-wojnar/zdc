@@ -4,12 +4,12 @@ import jax
 import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, PatchExpand, Reshape, TransformerEncoderBlock
+from zdc.layers import Concatenate, Flatten, Patches, PatchEncoder, PatchExpand, Reshape, TransformerBlock
 from zdc.models import PARTICLE_SHAPE
 from zdc.models.autoencoder.supervised import loss_fn
 from zdc.utils.data import load
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
-from zdc.utils.train import train_loop
+from zdc.utils.nn import init, gradient_step, opt_with_cosine_schedule
+from zdc.utils.train import train_loop, default_generate_fn
 
 
 class Encoder(nn.Module):
@@ -25,7 +25,7 @@ class Encoder(nn.Module):
         x = PatchEncoder(x.shape[1], self.embedding_dim, positional_encoding=True)(x)
 
         for _ in range(self.depth):
-            x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
+            x = TransformerBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
         x = Flatten()(x)
         x = nn.Dense(128)(x)
@@ -51,7 +51,7 @@ class Decoder(nn.Module):
         x = Concatenate(axis=1)(c, x)
 
         for _ in range(self.depth):
-            x = TransformerEncoderBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
+            x = TransformerBlock(self.num_heads, 4 * self.embedding_dim, self.drop_rate)(x, training=training)
 
         x = x[:, 1:, :]
         x = PatchExpand(h=11, w=11)(x)
@@ -97,10 +97,10 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, cond_weight=1.)))
-    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
+    generate_fn = jax.jit(default_generate_fn(model_gen))
     train_metrics = ('loss', 'mse_cond', 'mse_rec')
 
     train_loop(
-        'vit_supervised', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'vit_supervised', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
+        train_metrics, None, params, state, opt_state, train_key, epochs=100, batch_size=128
     )

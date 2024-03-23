@@ -16,16 +16,17 @@ class FeedForwardBlock(nn.Module):
         return x
 
 
-class TransformerEncoderBlock(nn.Module):
+class TransformerBlock(nn.Module):
     num_heads: int
     hidden_dim: int
     drop_rate: float
+    decode: bool = False
 
     @nn.compact
-    def __call__(self, x, training=True):
+    def __call__(self, x, mask=None, training=True):
         residual = x
         x = nn.LayerNorm()(x)
-        x = nn.MultiHeadDotProductAttention(num_heads=self.num_heads, qkv_features=x.shape[-1])(x)
+        x = nn.MultiHeadDotProductAttention(num_heads=self.num_heads, qkv_features=x.shape[-1], decode=self.decode)(x, mask=mask)
         x = x + residual
 
         residual = x

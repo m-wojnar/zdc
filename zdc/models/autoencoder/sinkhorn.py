@@ -8,7 +8,7 @@ from zdc.models.autoencoder.noise_generator import NGVAE, NGVAEGen
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
-from zdc.utils.train import train_loop
+from zdc.utils.train import train_loop, default_generate_fn
 
 
 def eps_schedule(diameter, blur, scaling):
@@ -97,10 +97,10 @@ if __name__ == '__main__':
 
     eps_list = eps_schedule(diameter=1e-2, blur=1e-5, scaling=0.95)
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, sinkhorn_weight=20., eps_list=eps_list)))
-    generate_fn = jax.jit(lambda *x: forward(model_gen, *x)[0])
+    generate_fn = jax.jit(default_generate_fn(model_gen))
     train_metrics = ('loss', 'sinkhorn', 'mse')
 
     train_loop(
-        'sinkhorn', train_fn, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        'sinkhorn', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
+        train_metrics, None, params, state, opt_state, train_key, epochs=100, batch_size=128
     )
