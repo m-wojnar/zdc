@@ -5,47 +5,55 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import UpSample, ConvBlock
+from zdc.layers import DenseBlock, Reshape
+from zdc.models import PARTICLE_SHAPE
+from zdc.models.autoencoder.vq_vae import loss_fn
 from zdc.utils.data import load
-from zdc.utils.losses import mse_loss
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
+from zdc.utils.nn import init, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
 
 
 class Encoder(nn.Module):
+    embedding_dim: int
+    latent_dim: int
+
     @nn.compact
-    def __call__(self, img, training=True):
-        x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
-        x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
+    def __call__(self, cond, training=True):
+        x = DenseBlock(self.embedding_dim, negative_slope=0.2)(cond)
+        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = Reshape((self.latent_dim, self.embedding_dim))(x)
         return x
 
 
 class Decoder(nn.Module):
+    embedding_dim: int
+    latent_dim: int
+    particle_dim: int
+    
     @nn.compact
     def __call__(self, z, training=True):
-        x = UpSample()(z)
-        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
-        x = nn.relu(x)
+        x = Reshape((self.latent_dim * self.embedding_dim,))(z)
+        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.embedding_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.particle_dim, negative_slope=0.2)(x)
         return x
 
 
 class VQVAE(nn.Module):
     num_embeddings: int = 512
-    embedding_dim: int = 128
+    embedding_dim: int = 32
+    latent_dim: int = 2
 
     def setup(self):
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+        self.encoder = Encoder(self.embedding_dim, self.latent_dim)
+        self.decoder = Decoder(self.embedding_dim, self.latent_dim, *PARTICLE_SHAPE)
         self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
 
-    def __call__(self, img, training=True):
-        encoded = self.encoder(img, training=training)
+    def __call__(self, cond, training=True):
+        encoded = self.encoder(cond, training=training)
         encoded_flatten = encoded.reshape((-1, self.embedding_dim))
         distances = (
             jnp.sum(encoded_flatten ** 2, axis=1, keepdims=True) +
@@ -61,17 +69,6 @@ class VQVAE(nn.Module):
         return reconstructed, encoded, discrete, quantized
 
 
-def loss_fn(params, state, key, img, cond, model, commitment_cost):
-    (reconstructed, encoded, discrete, quantized), state = forward(model, params, state, key, img)
-    e_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)
-    q_loss = mse_loss(quantized, jax.lax.stop_gradient(encoded))
-    mse = mse_loss(img, reconstructed)
-    avg_prob = jnp.mean(discrete, axis=0)
-    perplexity = jnp.exp(-jnp.sum(avg_prob * jnp.log(avg_prob + 1e-10)))
-    loss = mse + commitment_cost * e_loss + q_loss
-    return loss, (state, loss, mse, e_loss, q_loss, perplexity)
-
-
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
@@ -80,7 +77,7 @@ if __name__ == '__main__':
     empty_dataset = (jnp.zeros((0, 0)),)
 
     model = VQVAE()
-    params, state = init(model, init_key, r_train[:5], print_summary=True)
+    params, state = init(model, init_key, p_train[:5], print_summary=True)
 
     optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
@@ -89,6 +86,6 @@ if __name__ == '__main__':
     train_metrics = ('loss', 'mse', 'e_loss', 'q_loss', 'perplexity')
 
     train_loop(
-        'vq_vae', train_fn, None, (r_train, p_train), empty_dataset, empty_dataset,
+        'vq_vae_cond', train_fn, None, (p_train, r_train), empty_dataset, empty_dataset,
         train_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )
