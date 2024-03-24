@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 from tqdm import trange
 
+from zdc.models import RESPONSE_SHAPE
 from zdc.utils.data import batches, get_samples
 from zdc.utils.losses import mae_loss, mse_loss, wasserstein_loss
 from zdc.utils.metrics import Metrics
@@ -58,11 +59,11 @@ def train_loop(
                 generated.append(generate_fn(params, state, subkey, *batch))
                 original.append(batch)
 
-        if len(generated) > 0:
-            generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in zip(*original))
-            metrics.add(dict(zip(eval_metrics, eval_fn(generated, *original))), 'val')
-            metrics.log(epoch)
+        generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in zip(*original))
+        metrics.add(dict(zip(eval_metrics, eval_fn(generated, *original))), 'val')
+        metrics.log(epoch)
 
+        if generated.shape[1:] == RESPONSE_SHAPE:
             plot_key, subkey = jax.random.split(plot_key)
             metrics.plot_responses(samples[0], generate_fn(params, state, subkey, *samples), epoch)
 
@@ -76,7 +77,6 @@ def train_loop(
             generated.append(generate_fn(params, state, subkey, *batch))
             original.append(batch)
 
-    if len(generated) > 0:
-        generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in zip(*original))
-        metrics.add(dict(zip(eval_metrics, eval_fn(generated, *original))), 'test')
-        metrics.log(epochs)
+    generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in zip(*original))
+    metrics.add(dict(zip(eval_metrics, eval_fn(generated, *original))), 'test')
+    metrics.log(epochs)

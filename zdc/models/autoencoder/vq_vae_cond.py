@@ -43,7 +43,7 @@ class Decoder(nn.Module):
         return x
 
 
-class VQVAE(nn.Module):
+class VQCond(nn.Module):
     num_embeddings: int = 512
     embedding_dim: int = 32
     latent_dim: int = 2
@@ -81,17 +81,18 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
-    model = VQVAE()
+    model = VQCond()
     params, state = init(model, init_key, p_train[:5], print_summary=True)
 
     optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, commitment_cost=0.25)))
-    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0])[0][0])
+    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], False)[0][0])
     train_metrics = ('loss', 'mse', 'e_loss', 'q_loss', 'perplexity')
+    eval_metrics = ('mse',)
 
     train_loop(
         'vq_vae_cond', train_fn, eval_fn, generate_fn, (p_train, r_train), (p_val, r_val), (p_test, r_test),
-        train_metrics, ('mse',), params, state, opt_state, train_key, epochs=100, batch_size=128
+        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
     )

@@ -34,14 +34,12 @@ def get_samples(*xs):
     return jax.tree_map(lambda x: x[50:100:4], xs)
 
 
-def batches(*x, batch_size=None, shuffle_key=None):
-    assert batch_size is not None
+def batches(*x, batch_size, shuffle_key=None):
+    n = len(x[0])
 
     if shuffle_key is not None:
-        perm = jax.random.permutation(shuffle_key, jnp.arange(len(x[0])))
+        perm = jax.random.permutation(shuffle_key, jnp.arange(n))
         x = tuple(x_i[perm] for x_i in x)
-
-    n = len(x[0])
 
     for i in range(0, n, batch_size):
         yield tuple(x_i[i:i + batch_size] for x_i in x)

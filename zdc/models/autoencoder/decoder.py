@@ -37,7 +37,7 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))
-    generate_fn = jax.jit(default_generate_fn(model))
+    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[1], False)[0])
     train_metrics = ('loss',)
 
     train_loop(
