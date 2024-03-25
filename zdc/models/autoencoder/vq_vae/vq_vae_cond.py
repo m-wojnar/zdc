@@ -7,7 +7,7 @@ from flax import linen as nn
 
 from zdc.layers import DenseBlock, Reshape
 from zdc.models import PARTICLE_SHAPE
-from zdc.models.autoencoder.vq_vae import loss_fn
+from zdc.models.autoencoder.vq_vae.vq_vae import loss_fn
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
