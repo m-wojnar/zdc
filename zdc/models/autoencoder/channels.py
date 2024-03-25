@@ -5,20 +5,20 @@ import optax
 
 from zdc.models.autoencoder.variational import VAE, VAEGen
 from zdc.utils.data import load
-from zdc.utils.losses import kl_loss, mse_loss
+from zdc.utils.losses import kl_loss, mse_loss, sinkhorn_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop, default_generate_fn
 from zdc.utils.wasserstein import sum_channels_parallel
 
 
-def loss_fn(params, state, key, img, cond, model, cond_weight, kl_weight):
+def loss_fn(params, state, key, img, cond, model, sinkhorn_fn, sinkhorn_weight, kl_weight):
     (reconstructed, z_mean, z_log_var), state = forward(model, params, state, key, img, cond)
     ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(reconstructed)
-    mse_ch = mse_loss(ch_true, ch_pred)
+    sinkhorn = sinkhorn_fn(ch_true, ch_pred)
     kl = kl_loss(z_mean, z_log_var)
-    mse_rec = mse_loss(img, reconstructed)
-    loss = kl_weight * kl + cond_weight * mse_ch + mse_rec
-    return loss, (state, loss, kl, mse_ch, mse_rec)
+    mse = mse_loss(img, reconstructed)
+    loss = kl_weight * kl + sinkhorn_weight * sinkhorn + mse
+    return loss, (state, loss, kl, sinkhorn, mse)
 
 
 if __name__ == '__main__':
@@ -33,9 +33,10 @@ if __name__ == '__main__':
     optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
-    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, cond_weight=0.05, kl_weight=0.7)))
+    sinkhorn_fn = sinkhorn_loss(diameter=1e-2, blur=1e-5, scaling=0.95)
+    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, sinkhorn_fn=sinkhorn_fn, sinkhorn_weight=1., kl_weight=0.7)))
     generate_fn = jax.jit(default_generate_fn(model_gen))
-    train_metrics = ('loss', 'kl', 'mse_ch', 'mse_rec')
+    train_metrics = ('loss', 'kl', 'sinkhorn', 'mse')
 
     train_loop(
         'channels', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
