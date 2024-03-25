@@ -114,13 +114,12 @@ def generate_fn(params, state, cache, key, c, x, y, model):
     return generated
 
 
-def tokenize_fn(params, state, key, x, batch_size, model):
+def tokenize_fn(key, x, batch_size, model_fn):
     tokenized = []
 
     for batch in batches(x, batch_size=batch_size):
         key, subkey = jax.random.split(key)
-        (_, _, discrete, _), _ = jax.jit(partial(forward, model), static_argnums=4)(params, state, subkey, *batch, False)
-        _, discrete = jnp.where(discrete)
+        _, discrete = jnp.where(model_fn(subkey, *batch))
         tokenized.append(discrete.reshape(batch[0].shape[0], -1))
 
     return jnp.concatenate(tokenized)
@@ -132,13 +131,16 @@ if __name__ == '__main__':
 
     batch_size = 256
 
-    vq_vqe, vq_vqe_cond = VQVAE(), VQCond()
-    vq_vae_params, vq_vae_state = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
-    vq_vae_cond_params, vq_vae_cond_state = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
+    vq_vae, vq_vae_cond = VQVAE(), VQCond()
+    vq_vae_variables = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
+    vq_vae_cond_variables = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
+
+    vq_vae_fn = jax.jit(lambda *args: forward(vq_vae, *vq_vae_variables, *args, False)[0][2])
+    vq_vae_cond_fn = jax.jit(lambda *args: forward(vq_vae_cond, *vq_vae_cond_variables, *args, False)[0][2])
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
-    r_train, r_val, r_test = jax.tree_map(lambda x: tokenize_fn(vq_vae_params, vq_vae_state, r_key, x, batch_size, vq_vqe), (r_train, r_val, r_test))
-    c_train, c_val, c_test = jax.tree_map(lambda x: tokenize_fn(vq_vae_cond_params, vq_vae_cond_state, p_key, x, batch_size, vq_vqe_cond), (p_train, p_val, p_test))
+    r_train, r_val, r_test = jax.tree_map(lambda x: tokenize_fn(r_key, x, batch_size, vq_vae_fn), (r_train, r_val, r_test))
+    c_train, c_val, c_test = jax.tree_map(lambda x: tokenize_fn(p_key, x, batch_size, vq_vae_cond_fn), (p_train, p_val, p_test))
     x_train, x_val, x_test = jax.tree_map(lambda x: x[:, :-1], (r_train, r_val, r_test))
     y_train, y_val, y_test = jax.tree_map(lambda c, x: jnp.concatenate((c, x), axis=1)[:, 1:], (c_train, c_val, c_test), (r_train, r_val, r_test))
 
