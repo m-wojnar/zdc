@@ -16,7 +16,7 @@ class Encoder(nn.Module):
     embedding_dim: int
     hidden_dim: int
     num_heads: int
-    num_layers: tuple
+    num_layers: int
     drop_rate: float
 
     @nn.compact
@@ -25,12 +25,12 @@ class Encoder(nn.Module):
         x = PatchEncoder(x.shape[1], self.hidden_dim, positional_encoding=True)(x)
         x = nn.LayerNorm()(x)
 
-        for _ in range(self.num_layers[0]):
+        for _ in range(self.num_layers // 2):
             x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
 
         x = PatchMerge(h=11, w=11)(x)
 
-        for _ in range(self.num_layers[1]):
+        for _ in range(self.num_layers - self.num_layers // 2):
             x = TransformerBlock(self.num_heads, 8 * self.hidden_dim, self.drop_rate)(x, training=training)
 
         x = Reshape((6, 6, 2 * self.hidden_dim))(x)
@@ -44,31 +44,26 @@ class Decoder(nn.Module):
     embedding_dim: int
     hidden_dim: int
     num_heads: int
-    num_layers: tuple
+    num_layers: int
     drop_rate: float
 
     @nn.compact
     def __call__(self, z, training=True):
         x = Reshape((6 * 6, self.embedding_dim))(z)
         x = PatchExpand(h=6, w=6)(x)
-        x = Reshape((12, 12, self.embedding_dim // 2))(x)
-        x = x[:, :-1, :-1, :]
-        x = Reshape((11 * 11, self.embedding_dim // 2))(x)
 
         x = nn.LayerNorm()(x)
         x = nn.Dense(self.hidden_dim)(x)
 
-        for _ in range(self.num_layers[0]):
+        for _ in range(self.num_layers):
             x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
 
-        x = PatchExpand(h=11, w=11)(x)
-        x = PatchExpand(h=22, w=22)(x)
+        x = PatchExpand(h=12, w=12)(x)
+        x = PatchExpand(h=24, w=24)(x)
+        x = Reshape((48, 48, -1))(x)
 
-        for _ in range(self.num_layers[1]):
-            x = TransformerBlock(self.num_heads, self.hidden_dim, self.drop_rate)(x, training=training)
-
-        x = Reshape((44, 44, -1))(x)
-        x = nn.Dense(1)(x)
+        x = nn.Conv(self.hidden_dim // 4, kernel_size=(5, 5), padding='VALID')(x)
+        x = nn.Conv(1, kernel_size=(1, 1))(x)
 
         return x
 
@@ -79,7 +74,7 @@ class VQVAE(nn.Module):
     encoder_hidden_dim: int = 128
     decoder_hidden_dim: int = 256
     num_heads: int = 4
-    num_layers: tuple = (2, 2)
+    num_layers: tuple = 4
     drop_rate: float = 0.1
 
     def setup(self):
