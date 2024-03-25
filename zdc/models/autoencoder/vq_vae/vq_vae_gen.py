@@ -4,9 +4,9 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-from zdc.models.autoencoder.vq_vae import Decoder
-from zdc.models.autoencoder.vq_vae_cond import VQCond
-from zdc.models.autoencoder.vq_vae_prior import VQPrior, tokenize_fn
+from zdc.models.autoencoder.vq_vae.vq_vae import Decoder
+from zdc.models.autoencoder.vq_vae.vq_vae_cond import VQCond
+from zdc.models.autoencoder.vq_vae.vq_vae_prior import VQPrior, tokenize_fn
 from zdc.utils.data import load, batches, get_samples
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import forward, load_model

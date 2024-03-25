@@ -6,8 +6,8 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import TransformerBlock, Concatenate
-from zdc.models.autoencoder.vq_vae import VQVAE
-from zdc.models.autoencoder.vq_vae_cond import VQCond
+from zdc.models.autoencoder.vq_vae.vq_vae import VQVAE
+from zdc.models.autoencoder.vq_vae.vq_vae_cond import VQCond
 from zdc.utils.data import load, batches
 from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule, load_model
@@ -157,5 +157,5 @@ if __name__ == '__main__':
 
     train_loop(
         'vq_vae_prior', train_fn, eval_fn, gen_fn, (c_train, x_train, y_train), (c_val, x_val, y_val), (c_test, x_test, y_test),
-        metrics, metrics, params, state, opt_state, train_key, epochs=100, batch_size=batch_size, n_rep=1
+        metrics, metrics, params, state, opt_state, train_key, epochs=40, batch_size=batch_size, n_rep=1
     )
