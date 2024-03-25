@@ -136,7 +136,7 @@ if __name__ == '__main__':
     vq_vae_params, vq_vae_state = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
     vq_vae_cond_params, vq_vae_cond_state = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
     r_train, r_val, r_test = jax.tree_map(lambda x: tokenize_fn(vq_vae_params, vq_vae_state, r_key, x, batch_size, vq_vqe), (r_train, r_val, r_test))
     c_train, c_val, c_test = jax.tree_map(lambda x: tokenize_fn(vq_vae_cond_params, vq_vae_cond_state, p_key, x, batch_size, vq_vqe_cond), (p_train, p_val, p_test))
     x_train, x_val, x_test = jax.tree_map(lambda x: x[:, :-1], (r_train, r_val, r_test))

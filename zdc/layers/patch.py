@@ -69,11 +69,12 @@ class PatchMerge(nn.Module):
 
     @nn.compact
     def __call__(self, x):
+        b, _, c = x.shape
+        x = x.reshape(b, self.h, self.w, c)
+
         if self.h % 2 != 0 or self.w % 2 != 0:
             x = jnp.pad(x, ((0, 0), (0, self.h % 2), (0, self.w % 2), (0, 0)))
 
-        b, _, c = x.shape
-        x = x.reshape(b, self.h, self.w, c)
         x0 = x[:, 0::2, 0::2, :]
         x1 = x[:, 1::2, 0::2, :]
         x2 = x[:, 0::2, 1::2, :]

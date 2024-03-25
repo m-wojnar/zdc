@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import UpSample, ConvBlock
+from zdc.layers import Patches, PatchEncoder, PatchMerge, PatchExpand, Reshape, TransformerBlock
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -13,35 +13,78 @@ from zdc.utils.train import train_loop
 
 
 class Encoder(nn.Module):
+    embedding_dim: int
+    hidden_dim: int
+    num_heads: int
+    num_layers: tuple
+    drop_rate: float
+
     @nn.compact
     def __call__(self, img, training=True):
-        x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
-        x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
+        x = Patches(patch_size=4)(img)
+        x = PatchEncoder(x.shape[1], self.hidden_dim, positional_encoding=True)(x)
+        x = nn.LayerNorm()(x)
+
+        for _ in range(self.num_layers[0]):
+            x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
+
+        x = PatchMerge(h=11, w=11)(x)
+
+        for _ in range(self.num_layers[1]):
+            x = TransformerBlock(self.num_heads, 8 * self.hidden_dim, self.drop_rate)(x, training=training)
+
+        x = Reshape((6, 6, 2 * self.hidden_dim))(x)
+        x = nn.LayerNorm()(x)
+        x = nn.Dense(self.embedding_dim)(x)
+
         return x
 
 
 class Decoder(nn.Module):
+    embedding_dim: int
+    hidden_dim: int
+    num_heads: int
+    num_layers: tuple
+    drop_rate: float
+
     @nn.compact
     def __call__(self, z, training=True):
-        x = UpSample()(z)
-        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
-        x = nn.relu(x)
+        x = Reshape((6 * 6, self.embedding_dim))(z)
+        x = PatchExpand(h=6, w=6)(x)
+        x = Reshape((12, 12, self.embedding_dim // 2))(x)
+        x = x[:, :-1, :-1, :]
+        x = Reshape((11 * 11, self.embedding_dim // 2))(x)
+
+        x = nn.LayerNorm()(x)
+        x = nn.Dense(self.hidden_dim)(x)
+
+        for _ in range(self.num_layers[0]):
+            x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
+
+        x = PatchExpand(h=11, w=11)(x)
+        x = PatchExpand(h=22, w=22)(x)
+
+        for _ in range(self.num_layers[1]):
+            x = TransformerBlock(self.num_heads, self.hidden_dim, self.drop_rate)(x, training=training)
+
+        x = Reshape((44, 44, -1))(x)
+        x = nn.Dense(1)(x)
+
         return x
 
 
 class VQVAE(nn.Module):
-    num_embeddings: int = 512
+    num_embeddings: int = 256
     embedding_dim: int = 128
+    encoder_hidden_dim: int = 128
+    decoder_hidden_dim: int = 256
+    num_heads: int = 4
+    num_layers: tuple = (2, 2)
+    drop_rate: float = 0.1
 
     def setup(self):
-        self.encoder = Encoder()
-        self.decoder = Decoder()
+        self.encoder = Encoder(self.embedding_dim, self.encoder_hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
+        self.decoder = Decoder(self.embedding_dim, self.decoder_hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
         self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
 
     def __call__(self, img, training=True):
@@ -76,7 +119,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
 
     model = VQVAE()
     params, state = init(model, init_key, r_train[:5], print_summary=True)

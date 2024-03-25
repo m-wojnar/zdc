@@ -79,7 +79,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
 
     model = VQCond()
     params, state = init(model, init_key, p_train[:5], print_summary=True)
