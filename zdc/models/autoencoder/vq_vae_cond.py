@@ -94,5 +94,5 @@ if __name__ == '__main__':
 
     train_loop(
         'vq_vae_cond', train_fn, eval_fn, generate_fn, (p_train, r_train), (p_val, r_val), (p_test, r_test),
-        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128
+        train_metrics, eval_metrics, params, state, opt_state, train_key, epochs=100, batch_size=128, n_rep=1
     )

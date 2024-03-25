@@ -45,9 +45,9 @@ class Transformer(nn.Module):
 class VQPrior(nn.Module):
     vocab_size: int = 512
     seq_len: int = 6 * 6 - 1
-    hidden_dim: int = 384
-    num_heads: int = 6
-    num_layers: int = 6
+    hidden_dim: int = 256
+    num_heads: int = 4
+    num_layers: int = 4
     drop_rate: float = 0.1
     decode: bool = False
 
@@ -81,6 +81,7 @@ class VQPrior(nn.Module):
 
 def loss_fn(params, state, key, c, x, y, model):
     logits, state = forward(model, params, state, key, c, x)
+    logits, y = logits.reshape(-1, logits.shape[-1]), y.reshape(-1)
     y = jax.nn.one_hot(y, logits.shape[-1])
     loss = xentropy_loss(logits, y)
     perplexity = jnp.exp(loss)
@@ -89,6 +90,7 @@ def loss_fn(params, state, key, c, x, y, model):
 
 def eval_fn(generated, *dataset):
     _, _, y = dataset
+    generated, y = generated.reshape(-1, generated.shape[-1]), y.reshape(-1)
     y = jax.nn.one_hot(y, generated.shape[-1])
     loss = xentropy_loss(generated, y)
     perplexity = jnp.exp(loss)
@@ -128,7 +130,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, r_key, p_key, train_key = jax.random.split(key, 4)
 
-    batch_size = 512
+    batch_size = 256
 
     vq_vqe, vq_vqe_cond = VQVAE(), VQCond()
     vq_vae_params, vq_vae_state = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
@@ -155,5 +157,5 @@ if __name__ == '__main__':
 
     train_loop(
         'vq_vae_prior', train_fn, eval_fn, gen_fn, (c_train, x_train, y_train), (c_val, x_val, y_val), (c_test, x_test, y_test),
-        metrics, metrics, params, state, opt_state, train_key, epochs=100, batch_size=batch_size
+        metrics, metrics, params, state, opt_state, train_key, epochs=100, batch_size=batch_size, n_rep=1
     )
