@@ -34,7 +34,7 @@ if __name__ == '__main__':
     opt_state = optimizer.init(params)
 
     sinkhorn_fn = sinkhorn_loss(diameter=1e-2, blur=1e-5, scaling=0.95)
-    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, sinkhorn_fn=sinkhorn_fn, sinkhorn_weight=1., kl_weight=0.7)))
+    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, sinkhorn_fn=sinkhorn_fn, sinkhorn_weight=0.1, kl_weight=0.7)))
     generate_fn = jax.jit(default_generate_fn(model_gen))
     train_metrics = ('loss', 'kl', 'sinkhorn', 'mse')
 

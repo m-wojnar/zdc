@@ -86,8 +86,10 @@ def train_fn(params, carry, opt_state, model, disc_optimizer, gen_optimizer):
         gen_acc = (fake_output > 0).mean()
         return loss, (state, loss, gen_acc)
 
-    state, key, img, cond, rand_cond = carry
+    state, key, img, cond = carry
     disc_opt_state, gen_opt_state = opt_state
+    forward_key, data_key = jax.random.split(key)
+    rand_cond = jax.random.permutation(data_key, cond)
 
     disc_params, disc_opt_state, (_, disc_loss, disc_real_acc, disc_fake_acc) = gradient_step(
         get_layers(params, 'discriminator'), (get_layers(params, 'generator'), state), disc_opt_state, disc_optimizer, _disc_loss_fn)
@@ -99,15 +101,14 @@ def train_fn(params, carry, opt_state, model, disc_optimizer, gen_optimizer):
 
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
-    data_key, init_key, train_key = jax.random.split(key, 3)
+    init_key, train_key = jax.random.split(key)
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
-    f_train, f_val, f_test = tuple(map(lambda x: jax.random.permutation(*x), zip(jax.random.split(data_key, 3), (p_train, p_val, p_test))))
 
     model, model_gen = GAN(), GANGen()
-    params, state = init(model, init_key, r_train[:5], p_train[:5], f_train[:5], print_summary=True)
+    params, state = init(model, init_key, r_train[:5], p_train[:5], p_train[:5], print_summary=True)
 
-    disc_optimizer = optax.adam(3e-5, b1=0.5, b2=0.9)
+    disc_optimizer = optax.adam(1e-4, b1=0.5, b2=0.9)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
     gen_optimizer = optax.adam(1e-4, b1=0.5, b2=0.9)
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
@@ -117,6 +118,6 @@ if __name__ == '__main__':
     train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
-        'gan', train_fn, None, generate_fn, (r_train, p_train, f_train), (r_val, p_val, f_val), (r_test, p_test, f_test),
+        'gan', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
         train_metrics, None, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
     )
