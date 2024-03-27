@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import Patches, PatchEncoder, PatchMerge, PatchExpand, Reshape, TransformerBlock
+from zdc.layers import Patches, PatchEncoder, Reshape, TransformerBlock
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -21,19 +21,14 @@ class Encoder(nn.Module):
 
     @nn.compact
     def __call__(self, img, training=True):
-        x = Patches(patch_size=4)(img)
+        x = jnp.pad(img, ((0, 0), (2, 2), (2, 2), (0, 0)))
+        x = Patches(patch_size=8)(x)
         x = PatchEncoder(x.shape[1], self.hidden_dim, positional_encoding=True)(x)
-        x = nn.LayerNorm()(x)
 
-        for _ in range(self.num_layers // 2):
+        for _ in range(self.num_layers):
             x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
 
-        x = PatchMerge(h=11, w=11)(x)
-
-        for _ in range(self.num_layers - self.num_layers // 2):
-            x = TransformerBlock(self.num_heads, 8 * self.hidden_dim, self.drop_rate)(x, training=training)
-
-        x = Reshape((6, 6, 2 * self.hidden_dim))(x)
+        x = Reshape((6, 6, self.hidden_dim))(x)
         x = nn.LayerNorm()(x)
         x = nn.Dense(self.embedding_dim)(x)
 
@@ -50,20 +45,15 @@ class Decoder(nn.Module):
     @nn.compact
     def __call__(self, z, training=True):
         x = Reshape((6 * 6, self.embedding_dim))(z)
-        x = PatchExpand(h=6, w=6)(x)
-
-        x = nn.LayerNorm()(x)
-        x = nn.Dense(self.hidden_dim)(x)
+        x = PatchEncoder(x.shape[1], self.hidden_dim, positional_encoding=True)(x)
 
         for _ in range(self.num_layers):
             x = TransformerBlock(self.num_heads, 4 * self.hidden_dim, self.drop_rate)(x, training=training)
 
-        x = PatchExpand(h=12, w=12)(x)
-        x = PatchExpand(h=24, w=24)(x)
-        x = Reshape((48, 48, -1))(x)
-
-        x = nn.Conv(self.hidden_dim // 4, kernel_size=(5, 5), padding='VALID')(x)
-        x = nn.Conv(1, kernel_size=(1, 1))(x)
+        x = Reshape((6, 6, self.hidden_dim))(x)
+        x = nn.ConvTranspose(1, kernel_size=(8, 8), strides=(8, 8), padding='SAME')(x)
+        x = jax.nn.relu(x + 0.5)
+        x = x[:, 2:-2, 2:-2, :]
 
         return x
 
@@ -71,15 +61,14 @@ class Decoder(nn.Module):
 class VQVAE(nn.Module):
     num_embeddings: int = 256
     embedding_dim: int = 128
-    encoder_hidden_dim: int = 128
-    decoder_hidden_dim: int = 256
+    hidden_dim: int = 256
     num_heads: int = 4
-    num_layers: tuple = 4
+    num_layers: tuple = 6
     drop_rate: float = 0.1
 
     def setup(self):
-        self.encoder = Encoder(self.embedding_dim, self.encoder_hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
-        self.decoder = Decoder(self.embedding_dim, self.decoder_hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
+        self.encoder = Encoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
+        self.decoder = Decoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
         self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
 
     def __call__(self, img, training=True):
