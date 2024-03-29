@@ -44,7 +44,7 @@ class Decoder(nn.Module):
 
 class VQCond(nn.Module):
     num_embeddings: int = 512
-    embedding_dim: int = 32
+    embedding_dim: int = 64
     projection_dim: int = 8
     latent_dim: int = 2
 

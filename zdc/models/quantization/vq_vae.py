@@ -59,9 +59,9 @@ class Decoder(nn.Module):
 
 
 class VQVAE(nn.Module):
-    num_embeddings: int = 256
-    embedding_dim: int = 128
-    projection_dim: int = 64
+    num_embeddings: int = 512
+    embedding_dim: int = 256
+    projection_dim: int = 32
     hidden_dim: int = 256
     num_heads: int = 4
     num_layers: tuple = 6
