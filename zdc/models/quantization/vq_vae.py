@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import Patches, PatchEncoder, Reshape, TransformerBlock
+from zdc.layers import Patches, PatchEncoder, Reshape, TransformerBlock, VectorQuantizerProjection
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -61,6 +61,7 @@ class Decoder(nn.Module):
 class VQVAE(nn.Module):
     num_embeddings: int = 256
     embedding_dim: int = 128
+    projection_dim: int = 64
     hidden_dim: int = 256
     num_heads: int = 4
     num_layers: tuple = 6
@@ -69,20 +70,11 @@ class VQVAE(nn.Module):
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
         self.decoder = Decoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
-        self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
+        self.quantizer = VectorQuantizerProjection(self.num_embeddings, self.embedding_dim, self.projection_dim)
 
     def __call__(self, img, training=True):
         encoded = self.encoder(img, training=training)
-        encoded_flatten = encoded.reshape((-1, self.embedding_dim))
-        distances = (
-            jnp.sum(encoded_flatten ** 2, axis=1, keepdims=True) +
-            -2 * jnp.dot(encoded_flatten, self.codebook.embedding.T) +
-            jnp.sum(self.codebook.embedding ** 2, axis=1)
-        )
-        discrete = jnp.argmin(distances, axis=1)
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
-        quantized = jnp.dot(discrete, self.codebook.embedding)
-        quantized = quantized.reshape(encoded.shape)
+        discrete, quantized = self.quantizer(encoded)
         quantized_sg = encoded + jax.lax.stop_gradient(quantized - encoded)
         reconstructed = self.decoder(quantized_sg, training=training)
         return reconstructed, encoded, discrete, quantized
@@ -103,7 +95,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
     model = VQVAE()
     params, state = init(model, init_key, r_train[:5], print_summary=True)

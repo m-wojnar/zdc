@@ -1,13 +1,12 @@
 from functools import partial
 
 import jax
-import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import DenseBlock, Reshape
+from zdc.layers import DenseBlock, Reshape, VectorQuantizerProjection
 from zdc.models import PARTICLE_SHAPE
-from zdc.models.autoencoder.vq_vae.vq_vae import loss_fn
+from zdc.models.quantization.vq_vae import loss_fn
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -46,25 +45,17 @@ class Decoder(nn.Module):
 class VQCond(nn.Module):
     num_embeddings: int = 512
     embedding_dim: int = 32
+    projection_dim: int = 8
     latent_dim: int = 2
 
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.latent_dim)
         self.decoder = Decoder(self.embedding_dim, self.latent_dim, *PARTICLE_SHAPE)
-        self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
+        self.quantizer = VectorQuantizerProjection(self.num_embeddings, self.embedding_dim, self.projection_dim)
 
     def __call__(self, cond, training=True):
         encoded = self.encoder(cond, training=training)
-        encoded_flatten = encoded.reshape((-1, self.embedding_dim))
-        distances = (
-            jnp.sum(encoded_flatten ** 2, axis=1, keepdims=True) +
-            -2 * jnp.dot(encoded_flatten, self.codebook.embedding.T) +
-            jnp.sum(self.codebook.embedding ** 2, axis=1)
-        )
-        discrete = jnp.argmin(distances, axis=1)
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
-        quantized = jnp.dot(discrete, self.codebook.embedding)
-        quantized = quantized.reshape(encoded.shape)
+        discrete, quantized = self.quantizer(encoded)
         quantized_sg = encoded + jax.lax.stop_gradient(quantized - encoded)
         reconstructed = self.decoder(quantized_sg, training=training)
         return reconstructed, encoded, discrete, quantized
@@ -79,7 +70,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
     model = VQCond()
     params, state = init(model, init_key, p_train[:5], print_summary=True)

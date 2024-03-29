@@ -24,7 +24,7 @@ class Metrics:
         if self.use_wandb:
             wandb.log(metrics, step=step)
 
-        print(f"Step: {step}")
+        print(f'Step: {step}')
         pprint(metrics)
 
         self.metrics = defaultdict(list)

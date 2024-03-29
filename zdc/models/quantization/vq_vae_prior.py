@@ -6,8 +6,8 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import TransformerBlock, Concatenate
-from zdc.models.autoencoder.vq_vae.vq_vae import VQVAE
-from zdc.models.autoencoder.vq_vae.vq_vae_cond import VQCond
+from zdc.models.quantization.vq_vae import VQVAE
+from zdc.models.quantization.vq_vae_cond import VQCond
 from zdc.utils.data import load, batches
 from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule, load_model
@@ -138,7 +138,7 @@ if __name__ == '__main__':
     vq_vae_fn = jax.jit(lambda *args: forward(vq_vae, *vq_vae_variables, *args, False)[0][2])
     vq_vae_cond_fn = jax.jit(lambda *args: forward(vq_vae_cond, *vq_vae_cond_variables, *args, False)[0][2])
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
     r_train, r_val, r_test = jax.tree_map(lambda x: tokenize_fn(r_key, x, batch_size, vq_vae_fn), (r_train, r_val, r_test))
     c_train, c_val, c_test = jax.tree_map(lambda x: tokenize_fn(p_key, x, batch_size, vq_vae_cond_fn), (p_train, p_val, p_test))
     x_train, x_val, x_test = jax.tree_map(lambda x: x[:, :-1], (r_train, r_val, r_test))

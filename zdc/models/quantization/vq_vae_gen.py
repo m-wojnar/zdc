@@ -4,9 +4,9 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-from zdc.models.autoencoder.vq_vae.vq_vae import Decoder
-from zdc.models.autoencoder.vq_vae.vq_vae_cond import VQCond
-from zdc.models.autoencoder.vq_vae.vq_vae_prior import VQPrior, tokenize_fn
+from zdc.models.quantization.vq_vae import Decoder
+from zdc.models.quantization.vq_vae_cond import VQCond
+from zdc.models.quantization.vq_vae_prior import VQPrior, tokenize_fn
 from zdc.utils.data import load, batches, get_samples
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import forward, load_model
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     vq_vae_cond_fn = jax.jit(lambda *args: forward(vq_vae_cond, *vq_vae_cond_variables, *args, False)[0][2])
 
-    r_train, _, r_test, p_train, _, p_test = load('../../../../data', 'standard')
+    r_train, _, r_test, p_train, _, p_test = load('../../../data', 'standard')
     r_sample, p_sample = get_samples(r_train, p_train)
     c_test, c_sample = jax.tree_map(lambda x, k: tokenize_fn(k, x, batch_size, vq_vae_cond_fn), (p_test, p_sample), tuple(jax.random.split(p_key)))
 
