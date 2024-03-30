@@ -80,6 +80,15 @@ class VQVAE(nn.Module):
         return reconstructed, encoded, discrete, quantized
 
 
+class VQVAEGen(VQVAE):
+    def __call__(self, discrete):
+        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
+        quantized = jnp.dot(discrete, self.quantizer.codebook.embedding)
+        quantized = quantized.reshape(-1, 6, 6, self.embedding_dim)
+        reconstructed = self.decoder(quantized, training=False)
+        return reconstructed
+
+
 def loss_fn(params, state, key, img, cond, model, commitment_cost):
     (reconstructed, encoded, discrete, quantized), state = forward(model, params, state, key, img)
     e_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)

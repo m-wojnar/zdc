@@ -2,36 +2,14 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from flax import linen as nn
 
-from zdc.models.quantization.vq_vae import Decoder
+from zdc.models.quantization.vq_vae import VQVAEGen
 from zdc.models.quantization.vq_vae_cond import VQCond
 from zdc.models.quantization.vq_vae_prior import VQPrior, tokenize_fn
 from zdc.utils.data import load, batches, get_samples
 from zdc.utils.metrics import Metrics
 from zdc.utils.nn import forward, load_model
 from zdc.utils.train import default_eval_fn
-
-
-class VQVAEGen(nn.Module):
-    num_embeddings: int = 256
-    embedding_dim: int = 128
-    encoder_hidden_dim: int = 128
-    decoder_hidden_dim: int = 256
-    num_heads: int = 4
-    num_layers: tuple = 4
-    drop_rate: float = 0.1
-
-    def setup(self):
-        self.decoder = Decoder(self.embedding_dim, self.decoder_hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
-        self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
-
-    def __call__(self, discrete):
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
-        quantized = jnp.dot(discrete, self.codebook.embedding)
-        quantized = quantized.reshape(-1, 6, 6, self.embedding_dim)
-        reconstructed = self.decoder(quantized, training=False)
-        return reconstructed
 
 
 def generate_prior_fn(params, state, cache, key, c, temperature, model):
