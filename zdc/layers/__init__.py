@@ -3,7 +3,7 @@ from zdc.layers.convnext import ConvNeXtV2Block, ConvNeXtV2Embedding, ConvNeXtV2
 from zdc.layers.dense import DenseBlock
 from zdc.layers.mlp import MLP, MixerBlock
 from zdc.layers.patch import PatchEncoder, PatchExpand, PatchMerge, Patches, Unpatch
-from zdc.layers.quantization import VectorQuantizer, VectorQuantizerEMA, VectorQuantizerProjection
+from zdc.layers.quantization import VectorQuantizer, VectorQuantizerEMA
 from zdc.layers.sampling import Sampling
 from zdc.layers.transformer import FeedForwardBlock, TransformerBlock
 from zdc.layers.upsample import UpSample

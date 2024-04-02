@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import Patches, PatchEncoder, Reshape, TransformerBlock, VectorQuantizerProjection
+from zdc.layers import Patches, PatchEncoder, Reshape, TransformerBlock, VectorQuantizer
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -66,15 +66,17 @@ class VQVAE(nn.Module):
     num_heads: int = 4
     num_layers: tuple = 6
     drop_rate: float = 0.1
+    normalize: bool = False
 
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
         self.decoder = Decoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
-        self.quantizer = VectorQuantizerProjection(self.num_embeddings, self.embedding_dim, self.projection_dim)
+        self.quantizer = VectorQuantizer(self.num_embeddings, self.embedding_dim, self.projection_dim, self.normalize)
 
     def __call__(self, img, training=True):
         encoded = self.encoder(img, training=training)
         discrete, quantized = self.quantizer(encoded)
+        encoded = VectorQuantizer.l2_normalize(encoded) if self.normalize else encoded
         quantized_sg = encoded + jax.lax.stop_gradient(quantized - encoded)
         reconstructed = self.decoder(quantized_sg, training=training)
         return reconstructed, encoded, discrete, quantized
@@ -85,6 +87,7 @@ class VQVAEGen(VQVAE):
         discrete = jax.nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.quantizer.codebook.embedding)
         quantized = quantized.reshape(-1, 6, 6, self.embedding_dim)
+        quantized = VectorQuantizer.l2_normalize(quantized) if self.normalize else quantized
         reconstructed = self.decoder(quantized, training=False)
         return reconstructed
 

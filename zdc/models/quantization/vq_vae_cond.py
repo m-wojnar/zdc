@@ -4,9 +4,9 @@ import jax
 import optax
 from flax import linen as nn
 
-from zdc.layers import DenseBlock, Reshape, VectorQuantizerProjection
+from zdc.layers import DenseBlock, Reshape, VectorQuantizer
 from zdc.models import PARTICLE_SHAPE
-from zdc.models.quantization.vq_vae import loss_fn
+from zdc.models.quantization.vq_vae import loss_fn, VQVAE
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
@@ -42,23 +42,17 @@ class Decoder(nn.Module):
         return x
 
 
-class VQCond(nn.Module):
+class VQCond(VQVAE):
     num_embeddings: int = 512
     embedding_dim: int = 64
     projection_dim: int = 8
     latent_dim: int = 2
+    normalize: bool = False
 
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.latent_dim)
         self.decoder = Decoder(self.embedding_dim, self.latent_dim, *PARTICLE_SHAPE)
-        self.quantizer = VectorQuantizerProjection(self.num_embeddings, self.embedding_dim, self.projection_dim)
-
-    def __call__(self, cond, training=True):
-        encoded = self.encoder(cond, training=training)
-        discrete, quantized = self.quantizer(encoded)
-        quantized_sg = encoded + jax.lax.stop_gradient(quantized - encoded)
-        reconstructed = self.decoder(quantized_sg, training=training)
-        return reconstructed, encoded, discrete, quantized
+        self.quantizer = VectorQuantizer(self.num_embeddings, self.embedding_dim, self.projection_dim, self.normalize)
 
 
 def eval_fn(generated, *dataset):

@@ -6,52 +6,44 @@ from flax import linen as nn
 class VectorQuantizer(nn.Module):
     num_embeddings: int
     embedding_dim: int
+    projection_dim: int = None
+    normalize: bool = False
 
     def setup(self):
         self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
 
+        if self.projection_dim is not None:
+            self.projection = nn.Dense(self.projection_dim)
+
+    @staticmethod
+    def l2_normalize(x, axis=-1, eps=1e-12):
+        return x * jax.lax.rsqrt((x * x).sum(axis=axis, keepdims=True) + eps)
+
     def __call__(self, x):
         x_flatten = x.reshape(-1, self.embedding_dim)
+        codebook = self.codebook.embedding
+
+        if self.projection_dim is not None:
+            x_flatten = self.projection(x_flatten)
+            codebook = self.projection(codebook)
+
+        if self.normalize:
+            x_flatten = self.l2_normalize(x_flatten)
+            codebook = self.l2_normalize(codebook)
 
         distances = (
             jnp.sum(x_flatten ** 2, axis=1, keepdims=True) +
-            -2 * jnp.dot(x_flatten, self.codebook.embedding.T) +
-            jnp.sum(self.codebook.embedding ** 2, axis=1)
+            -2 * jnp.dot(x_flatten, codebook.T) +
+            jnp.sum(codebook ** 2, axis=1)
         )
 
         discrete = jnp.argmin(distances, axis=1)
         discrete = jax.nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.codebook.embedding)
-        quantized = quantized.reshape(x.shape)
+        quantized = quantized.reshape(x.shape[:-1] + (-1,))
 
-        return discrete, quantized
-
-
-class VectorQuantizerProjection(nn.Module):
-    num_embeddings: int
-    embedding_dim: int
-    projection_dim: int
-
-    def setup(self):
-        self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
-        self.projection = nn.Dense(self.projection_dim)
-
-    def __call__(self, x):
-        x_flatten = x.reshape(-1, self.embedding_dim)
-
-        x_proj = self.projection(x_flatten)
-        codebook_proj = self.projection(self.codebook.embedding)
-
-        distances = (
-            jnp.sum(x_proj ** 2, axis=1, keepdims=True) +
-            -2 * jnp.dot(x_proj, codebook_proj.T) +
-            jnp.sum(codebook_proj ** 2, axis=1)
-        )
-
-        discrete = jnp.argmin(distances, axis=1)
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
-        quantized = jnp.dot(discrete, self.codebook.embedding)
-        quantized = quantized.reshape(x.shape)
+        if self.normalize:
+            quantized = self.l2_normalize(quantized)
 
         return discrete, quantized
 
