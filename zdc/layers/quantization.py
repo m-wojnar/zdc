@@ -48,25 +48,26 @@ class VectorQuantizer(nn.Module):
         return discrete, quantized
 
 
-class VectorQuantizerEMA(nn.Module):
+class VectorQuantizerEMA(VectorQuantizer):
     num_embeddings: int
     embedding_dim: int
     decay: float = 0.99
     epsilon: float = 1e-5
+    normalize: bool = False
 
     def setup(self):
         self.codebook = self.variable(
             'state', 'codebook',
-            jax.nn.initializers.normal(1.0),
+            jax.nn.initializers.variance_scaling(1.0, 'fan_in', 'normal', out_axis=0),
             self.make_rng('zdc'), (self.num_embeddings, self.embedding_dim),
         )
         self.ema_count = self.variable(
-            'stats',  'ema_count',
+            'state',  'ema_count',
             jax.nn.initializers.zeros,
             jax.random.PRNGKey(0), self.num_embeddings
         )
         self.ema_weight = self.variable(
-            'stats', 'ema_weight',
+            'state', 'ema_weight',
             lambda: self.codebook.value
         )
 
@@ -80,17 +81,25 @@ class VectorQuantizerEMA(nn.Module):
 
     def __call__(self, x, training=True):
         x_flatten = x.reshape(-1, self.embedding_dim)
+        codebook = self.codebook.value
+
+        if self.normalize:
+            x_flatten = self.l2_normalize(x_flatten)
+            codebook = self.l2_normalize(codebook)
 
         distances = (
             jnp.sum(x_flatten ** 2, axis=1, keepdims=True) +
-            -2 * jnp.dot(x_flatten, self.codebook.value.T) +
-            jnp.sum(self.codebook.value ** 2, axis=1)
+            -2 * jnp.dot(x_flatten, codebook.T) +
+            jnp.sum(codebook ** 2, axis=1)
         )
 
         discrete = jnp.argmin(distances, axis=1)
         discrete = jax.nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.codebook.value)
         quantized = quantized.reshape(x.shape)
+
+        if self.normalize:
+            quantized = self.l2_normalize(quantized)
 
         if training:
             self.ema_count.value, self.ema_weight.value, self.codebook.value = jax.lax.stop_gradient(
