@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
 
-    vit_config = dict(latent_dim=128, num_heads=8, drop_rate=0.2, embedding_dim=128, depth=6)
+    vit_config = dict(latent_dim=128, num_heads=6, drop_rate=0.1, embedding_dim=288, depth=6)
     model, model_gen = ViTVAE(**vit_config), ViTVAEGen(**vit_config)
     params, state = init(model, init_key, r_train[:5], p_train[:5], print_summary=True)
 

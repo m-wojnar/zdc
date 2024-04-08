@@ -59,14 +59,14 @@ class Decoder(nn.Module):
 
 
 class VQVAE(nn.Module):
-    num_embeddings: int = 512
+    num_embeddings: int = 256
     embedding_dim: int = 256
     projection_dim: int = 32
     hidden_dim: int = 256
     num_heads: int = 4
     num_layers: tuple = 6
     drop_rate: float = 0.1
-    normalize: bool = False
+    normalize: bool = True
 
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)

@@ -1,10 +1,11 @@
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, Flatten, MixerBlock, Patches, PatchEncoder, PatchExpand, Reshape, Sampling
+from zdc.layers import Concatenate, Flatten, MixerBlock, Patches, PatchEncoder, Reshape, Sampling
 from zdc.models.autoencoder.variational import loss_fn
 from zdc.utils.data import load
 from zdc.utils.nn import init, gradient_step, opt_with_cosine_schedule
@@ -20,7 +21,8 @@ class Encoder(nn.Module):
 
     @nn.compact
     def __call__(self, img, cond, training=True):
-        x = Patches(patch_size=4)(img)
+        x = jnp.pad(img, ((0, 0), (2, 2), (2, 2), (0, 0)))
+        x = Patches(patch_size=8)(x)
         x = PatchEncoder(x.shape[1], self.hidden_dim)(x)
 
         c = nn.Dense(self.hidden_dim)(cond)
@@ -31,8 +33,10 @@ class Encoder(nn.Module):
             x = MixerBlock(self.tokens_dim, self.channels_dim)(x)
 
         x = Flatten()(x)
+        x = nn.LayerNorm()(x)
         x = nn.Dense(2 * self.latent_dim)(x)
-        x = nn.relu(x)
+        x = nn.gelu(x)
+
         z_mean = nn.Dense(self.latent_dim)(x)
         z_log_var = nn.Dense(self.latent_dim)(x)
         z = Sampling()(z_mean, z_log_var)
@@ -47,9 +51,9 @@ class Decoder(nn.Module):
 
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x = nn.Dense(11 * 11)(z)
-        x = Reshape((11 * 11, 1))(x)
-        x = PatchEncoder(11 * 11, self.hidden_dim, positional_encoding=True)(x)
+        x = nn.Dense(6 * 6 * 64)(z)
+        x = Reshape((6 * 6, 64))(x)
+        x = PatchEncoder(6 * 6, self.hidden_dim)(x)
 
         c = nn.Dense(self.hidden_dim)(cond)
         c = Reshape((1, self.hidden_dim))(c)
@@ -59,20 +63,19 @@ class Decoder(nn.Module):
             x = MixerBlock(self.tokens_dim, self.channels_dim)(x)
 
         x = x[:, 1:, :]
-        x = PatchExpand(h=11, w=11)(x)
-        x = PatchExpand(h=22, w=22)(x)
-        x = Reshape((44, 44, self.hidden_dim // 4))(x)
-        x = nn.Dense(1)(x)
-        x = nn.relu(x)
+        x = Reshape((6, 6, self.hidden_dim))(x)
+        x = nn.ConvTranspose(1, kernel_size=(8, 8), strides=(8, 8), padding='SAME')(x)
+        x = jax.nn.relu(x + 0.5)
+        x = x[:, 2:-2, 2:-2, :]
         return x
 
 
 class MLPMixerVAE(nn.Module):
     latent_dim: int = 10
-    hidden_dim: int = 128
-    tokens_dim: int = 64
-    channels_dim: int = 512
-    depth: int = 6
+    hidden_dim: int = 96
+    tokens_dim: int = 128
+    channels_dim: int = 384
+    depth: int = 5
 
     @nn.compact
     def __call__(self, img, cond, training=True):

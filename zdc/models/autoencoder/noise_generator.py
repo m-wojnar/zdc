@@ -24,7 +24,7 @@ class NoiseGenerator(nn.Module):
         x = Concatenate()(x1, x2)
         x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
         x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.latent_dim, negative_slope=0.2)(x)
+        x = DenseBlock(self.latent_dim, negative_slope=0.0)(x)
         return x
 
 

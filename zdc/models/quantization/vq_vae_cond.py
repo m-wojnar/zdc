@@ -43,11 +43,11 @@ class Decoder(nn.Module):
 
 
 class VQCond(VQVAE):
-    num_embeddings: int = 512
+    num_embeddings: int = 256
     embedding_dim: int = 64
-    projection_dim: int = 8
+    projection_dim: int = 16
     latent_dim: int = 2
-    normalize: bool = False
+    normalize: bool = True
 
     def setup(self):
         self.encoder = Encoder(self.embedding_dim, self.latent_dim)
