@@ -17,8 +17,8 @@ def load(path=DEFAULT_PATH, scaler='standard', val_size=0.1, test_size=0.2, load
     particles = jnp.load(os.path.join(path, 'data_nonrandom_particles.npz'))['arr_0'].astype(float)
     particles, pdgid = particles[..., :-1], particles[..., -1]
 
-    r_train, r_test, p_train, p_test, pdgid_train, pdgid_test = train_test_split(responses, particles, pdgid, test_size=test_size, shuffle=False)
-    r_train, r_val, p_train, p_val, pdgid_train, pdgid_val = train_test_split(r_train, p_train, pdgid_train, test_size=val_size / (1 - test_size), shuffle=False)
+    r_train, r_test, p_train, p_test, pdgid_train, pdgid_test = train_test_split(responses, particles, pdgid, test_size=test_size, random_state=42)
+    r_train, r_val, p_train, p_val, pdgid_train, pdgid_val = train_test_split(r_train, p_train, pdgid_train, test_size=val_size / (1 - test_size), random_state=43)
 
     if scaler == 'standard':
         scaler = StandardScaler()
