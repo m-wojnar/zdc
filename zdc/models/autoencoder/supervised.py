@@ -3,7 +3,7 @@ from functools import partial
 import jax
 from flax import linen as nn
 
-from zdc.architectures.conv import Decoder, Encoder, optimizer
+from zdc.architectures.vit import Encoder, Decoder, optimizer
 from zdc.layers import Flatten
 from zdc.models import PARTICLE_SHAPE
 from zdc.utils.data import load

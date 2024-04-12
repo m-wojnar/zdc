@@ -3,7 +3,7 @@ from functools import partial
 import jax
 from flax import linen as nn
 
-from zdc.architectures.conv import optimizer, Encoder, Decoder
+from zdc.architectures.vit import Encoder, Decoder, optimizer
 from zdc.layers import Concatenate, DenseBlock, Flatten, Reshape
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss

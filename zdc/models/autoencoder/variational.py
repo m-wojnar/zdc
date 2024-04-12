@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
-from zdc.architectures.conv import Encoder, Decoder, optimizer
-from zdc.layers import Flatten, Reshape
+from zdc.architectures.vit import Encoder, Decoder, optimizer
+from zdc.layers import Flatten, Reshape, Concatenate
 from zdc.utils.data import load
 from zdc.utils.losses import kl_loss, mse_loss
 from zdc.utils.nn import init, forward, gradient_step
@@ -35,6 +35,7 @@ class VAE(nn.Module):
         self.dense_log_var = nn.Dense(self.latent_dim)
         self.sample = Sampling()
 
+        self.concatenate = Concatenate()
         self.post_latent = nn.Dense(6 * 6 * self.hidden_dim)
         self.reshape = Reshape((6 * 6, self.hidden_dim))
         self.decoder = self.decoder_type()
@@ -50,16 +51,18 @@ class VAE(nn.Module):
         z_log_var = self.dense_log_var(x)
         z = self.sample(z_mean, z_log_var)
 
+        z = self.concatenate(z, cond)
         z = self.post_latent(z)
         z = self.reshape(z)
-        reconstructed = self.decoder(z, cond, training=training)
+        reconstructed = self.decoder(z, training=training)
         return reconstructed, z_mean, z_log_var
 
     def gen(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
+        z = self.concatenate(z, cond)
         z = self.post_latent(z)
         z = self.reshape(z)
-        return self.decoder(z, cond, training=False)
+        return self.decoder(z, training=False)
 
 
 def loss_fn(params, state, key, img, cond, model, kl_weight=0.7):
