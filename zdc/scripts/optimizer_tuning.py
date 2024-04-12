@@ -38,7 +38,7 @@ def suggest_optimizer(trial, epochs, batch_size, n_examples):
         return optimizer(learning_rate)
 
 
-def objective(trial, train_dataset, val_dataset, epochs=100, batch_size=256, n_examples=214746):
+def objective(trial, train_dataset, val_dataset, n_rep=5, epochs=100, batch_size=256, n_examples=214746):
     optimizer = suggest_optimizer(trial, epochs, batch_size, n_examples)
 
     init_key, train_key, val_key, shuffle_key = jax.random.split(jax.random.PRNGKey(42), 4)
@@ -60,9 +60,10 @@ def objective(trial, train_dataset, val_dataset, epochs=100, batch_size=256, n_e
         generated, original = [], []
 
         for batch in batches(*val_dataset, batch_size=batch_size, shuffle_key=shuffle_val_subkey):
-            val_key, subkey = jax.random.split(val_key)
-            generated.append(generate_fn(params, state, subkey, *batch))
-            original.append(batch[0])
+            for _ in range(n_rep):
+                val_key, subkey = jax.random.split(val_key)
+                generated.append(generate_fn(params, state, subkey, *batch))
+                original.append(batch)
 
         generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in zip(*original))
         _, _, val_wasserstein = default_eval_fn(generated, *original)
