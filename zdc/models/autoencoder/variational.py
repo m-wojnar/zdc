@@ -1,68 +1,68 @@
 from functools import partial
 
 import jax
-import optax
+import jax.numpy as jnp
 from flax import linen as nn
 
-from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, Sampling, UpSample
+from zdc.architectures.conv import Encoder, Decoder, optimizer
+from zdc.layers import Flatten, Reshape
 from zdc.utils.data import load
 from zdc.utils.losses import kl_loss, mse_loss
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
+from zdc.utils.nn import init, forward, gradient_step
 from zdc.utils.train import train_loop, default_generate_fn
 
 
-class Encoder(nn.Module):
-    latent_dim: int = 10
-
+class Sampling(nn.Module):
     @nn.compact
-    def __call__(self, img, cond, training=True):
-        x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
-        x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-        x = Flatten()(x)
-        x = Concatenate()(x, cond)
-        x = nn.Dense(2 * self.latent_dim)(x)
-        x = nn.relu(x)
-        z_mean = nn.Dense(self.latent_dim)(x)
-        z_log_var = nn.Dense(self.latent_dim)(x)
-        z = Sampling()(z_mean, z_log_var)
-        return z_mean, z_log_var, z
-
-
-class Decoder(nn.Module):
-    @nn.compact
-    def __call__(self, z, cond, training=True):
-        x = Concatenate()(z, cond)
-        x = nn.Dense(128 * 6 * 6)(x)
-        x = Reshape((6, 6, 128))(x)
-        x = UpSample()(x)
-        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
-        x = nn.relu(x)
-        return x
+    def __call__(self, z_mean, z_log_var):
+        epsilon = jax.random.normal(self.make_rng('zdc'), z_mean.shape)
+        return z_mean + jnp.exp(0.5 * z_log_var) * epsilon
 
 
 class VAE(nn.Module):
-    @nn.compact
+    encoder_type: nn.Module
+    decoder_type: nn.Module
+    latent_dim: int = 10
+    hidden_dim: int = 64
+
+    def setup(self):
+        self.encoder = self.encoder_type()
+        self.pre_latent = nn.Dense(self.hidden_dim)
+        self.flatten = Flatten()
+
+        self.dense_shared = nn.Dense(2 * self.latent_dim)
+        self.dense_mean = nn.Dense(self.latent_dim)
+        self.dense_log_var = nn.Dense(self.latent_dim)
+        self.sample = Sampling()
+
+        self.post_latent = nn.Dense(6 * 6 * self.hidden_dim)
+        self.reshape = Reshape((6 * 6, self.hidden_dim))
+        self.decoder = self.decoder_type()
+
     def __call__(self, img, cond, training=True):
-        z_mean, z_log_var, z = Encoder()(img, cond, training=training)
-        reconstructed = Decoder()(z, cond, training=training)
+        x = self.encoder(img, cond, training=training)
+        x = self.pre_latent(x)
+        x = self.flatten(x)
+
+        x = self.dense_shared(x)
+        x = nn.relu(x)
+        z_mean = self.dense_mean(x)
+        z_log_var = self.dense_log_var(x)
+        z = self.sample(z_mean, z_log_var)
+
+        z = self.post_latent(z)
+        z = self.reshape(z)
+        reconstructed = self.decoder(z, cond, training=training)
         return reconstructed, z_mean, z_log_var
 
+    def gen(self, cond):
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
+        z = self.post_latent(z)
+        z = self.reshape(z)
+        return self.decoder(z, cond, training=False)
 
-class VAEGen(nn.Module):
-    @nn.compact
-    def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        return Decoder()(z, cond, training=False)
 
-
-def loss_fn(params, state, key, img, cond, model, kl_weight):
+def loss_fn(params, state, key, img, cond, model, kl_weight=0.7):
     (reconstructed, z_mean, z_log_var), state = forward(model, params, state, key, img, cond)
     kl = kl_loss(z_mean, z_log_var)
     mse = mse_loss(img, reconstructed)
@@ -74,19 +74,17 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load()
 
-    model, model_gen = VAE(), VAEGen()
+    model = VAE(Encoder, Decoder)
     params, state = init(model, init_key, r_train[:5], p_train[:5], print_summary=True)
-
-    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
-    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, kl_weight=0.7)))
-    generate_fn = jax.jit(default_generate_fn(model_gen))
+    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))
+    generate_fn = jax.jit(default_generate_fn(model))
     train_metrics = ('loss', 'kl', 'mse')
 
     train_loop(
         'variational', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, None, params, state, opt_state, train_key, epochs=100, batch_size=128
+        train_metrics, None, params, state, opt_state, train_key
     )

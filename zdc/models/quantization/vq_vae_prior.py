@@ -6,8 +6,8 @@ import optax
 from flax import linen as nn
 
 from zdc.layers import TransformerBlock, Concatenate
-from zdc.models.quantization.vq_vae import VQVAE
-from zdc.models.quantization.vq_vae_cond import VQCond
+from zdc.models.quantization.vq_vae import VQVAE, Encoder as ImgEncoder, Decoder as ImgDecoder
+from zdc.models.quantization.vq_vae_cond import Encoder as CondEncoder, Decoder as CondDecoder
 from zdc.utils.data import load, batches
 from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule, load_model
@@ -82,7 +82,7 @@ class VQPrior(nn.Module):
 def loss_fn(params, state, key, c, x, y, model):
     logits, state = forward(model, params, state, key, c, x)
     logits, y = logits.reshape(-1, logits.shape[-1]), y.reshape(-1)
-    y = jax.nn.one_hot(y, logits.shape[-1])
+    y = nn.one_hot(y, logits.shape[-1])
     loss = xentropy_loss(logits, y)
     perplexity = jnp.exp(loss)
     return loss, (state, loss, perplexity)
@@ -91,7 +91,7 @@ def loss_fn(params, state, key, c, x, y, model):
 def eval_fn(generated, *dataset):
     _, _, y = dataset
     generated, y = generated.reshape(-1, generated.shape[-1]), y.reshape(-1)
-    y = jax.nn.one_hot(y, generated.shape[-1])
+    y = nn.one_hot(y, generated.shape[-1])
     loss = xentropy_loss(generated, y)
     perplexity = jnp.exp(loss)
     return loss, perplexity
@@ -131,14 +131,15 @@ if __name__ == '__main__':
 
     batch_size = 256
 
-    vq_vae, vq_vae_cond = VQVAE(), VQCond()
+    vq_vae = VQVAE(ImgEncoder, ImgDecoder)
+    vq_vae_cond = VQVAE(CondEncoder, CondDecoder)
     vq_vae_variables = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
     vq_vae_cond_variables = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
 
     vq_vae_fn = jax.jit(lambda *args: forward(vq_vae, *vq_vae_variables, *args, False)[0][2])
     vq_vae_cond_fn = jax.jit(lambda *args: forward(vq_vae_cond, *vq_vae_cond_variables, *args, False)[0][2])
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load()
     r_train, r_val, r_test = jax.tree_map(lambda x: tokenize_fn(r_key, x, batch_size, vq_vae_fn), (r_train, r_val, r_test))
     c_train, c_val, c_test = jax.tree_map(lambda x: tokenize_fn(p_key, x, batch_size, vq_vae_cond_fn), (p_train, p_val, p_test))
     x_train, x_val, x_test = jax.tree_map(lambda x: x[:, :-1], (r_train, r_val, r_test))
@@ -159,5 +160,5 @@ if __name__ == '__main__':
 
     train_loop(
         'vq_vae_prior', train_fn, eval_fn, gen_fn, (c_train, x_train, y_train), (c_val, x_val, y_val), (c_test, x_test, y_test),
-        metrics, metrics, params, state, opt_state, train_key, epochs=40, batch_size=batch_size, n_rep=1
+        metrics, metrics, params, state, opt_state, train_key, batch_size=batch_size, n_rep=1
     )

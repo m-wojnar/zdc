@@ -103,7 +103,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load()
 
     model, model_gen = GAN(), GANGen()
     params, state = init(model, init_key, r_train[:5], p_train[:5], p_train[:5], print_summary=True)
@@ -119,5 +119,5 @@ if __name__ == '__main__':
 
     train_loop(
         'gan', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, None, params, state, (disc_opt_state, gen_opt_state), train_key, epochs=100, batch_size=128
+        train_metrics, None, params, state, (disc_opt_state, gen_opt_state), train_key
     )

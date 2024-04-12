@@ -1,65 +1,44 @@
 from functools import partial
 
 import jax
-import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, ConvBlock, Flatten, Reshape, UpSample
+from zdc.architectures.conv import Decoder, Encoder, optimizer
+from zdc.layers import Flatten
 from zdc.models import PARTICLE_SHAPE
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
+from zdc.utils.nn import init, forward, gradient_step
 from zdc.utils.train import train_loop, default_generate_fn
 
 
-class Encoder(nn.Module):
-    @nn.compact
-    def __call__(self, img, training=True):
-        x = nn.Conv(32, kernel_size=(4, 4), strides=(2, 2))(img)
-        x = nn.Conv(64, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.Conv(128, kernel_size=(4, 4), strides=(2, 2))(x)
-        x = nn.leaky_relu(x, negative_slope=0.1)
-        x = Flatten()(x)
-        x = nn.Dense(128)(x)
-        x = nn.relu(x)
-        x = nn.Dense(*PARTICLE_SHAPE)(x)
-        return x
-
-
-class Decoder(nn.Module):
-    @nn.compact
-    def __call__(self, z, cond, training=True):
-        x = Concatenate()(z, cond)
-        x = nn.Dense(128 * 6 * 6)(x)
-        x = Reshape((6, 6, 128))(x)
-        x = UpSample()(x)
-        x = ConvBlock(128, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(32, kernel_size=4, use_bn=True, negative_slope=0.)(x, training=training)
-        x = nn.Conv(1, kernel_size=(5, 5), padding='valid')(x)
-        x = nn.relu(x)
-        return x
-
-
 class SupervisedAE(nn.Module):
-    @nn.compact
+    encoder_type: nn.Module
+    decoder_type: nn.Module
+    noise_dim: int = 4
+    hidden_dim: int = 64
+
+    def setup(self):
+        self.encoder = self.encoder_type()
+        self.flatten = Flatten()
+        self.pre_latent = nn.Dense(*PARTICLE_SHAPE)
+        self.decoder = self.decoder_type()
+
     def __call__(self, img, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 10))
-        cond = Encoder()(img, training=training)
-        reconstructed = Decoder()(z, cond, training=training)
+        x = self.encoder(img, training=training)
+        x = self.flatten(x)
+        cond = self.pre_latent(x)
+
+        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 6 * 6, self.noise_dim))
+        reconstructed = self.decoder(z, cond, training=training)
         return reconstructed, cond
 
-
-class SupervisedAEGen(nn.Module):
-    @nn.compact
-    def __call__(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        return Decoder()(z, cond, training=False)
+    def gen(self, cond):
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 6 * 6, self.noise_dim))
+        return self.decoder(z, cond, training=False)
 
 
-def loss_fn(params, state, key, img, cond, model, cond_weight):
+def loss_fn(params, state, key, img, cond, model, cond_weight=1.0):
     (reconstructed, encoder_cond), state = forward(model, params, state, key, img)
     mse_cond = mse_loss(cond, encoder_cond)
     mse_rec = mse_loss(img, reconstructed)
@@ -71,19 +50,17 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load()
 
-    model, model_gen = SupervisedAE(), SupervisedAEGen()
+    model = SupervisedAE(Encoder, Decoder)
     params, state = init(model, init_key, r_train[:5], print_summary=True)
-
-    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
-    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model, cond_weight=1.)))
-    generate_fn = jax.jit(default_generate_fn(model_gen))
+    train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))
+    generate_fn = jax.jit(default_generate_fn(model))
     train_metrics = ('loss', 'mse_cond', 'mse_rec')
 
     train_loop(
         'supervised', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, None, params, state, opt_state, train_key, epochs=100, batch_size=128
+        train_metrics, None, params, state, opt_state, train_key
     )

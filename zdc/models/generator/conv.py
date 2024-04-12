@@ -1,21 +1,29 @@
 from functools import partial
 
 import jax
-import optax
 from flax import linen as nn
 
-from zdc.models.autoencoder.variational import Decoder as DecoderBlock
+from zdc.models.autoencoder.variational import Decoder, optimizer
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
+from zdc.utils.nn import init, forward, gradient_step
 from zdc.utils.train import train_loop, default_generate_fn
 
 
-class Decoder(nn.Module):
-    @nn.compact
+class Generator(nn.Module):
+    decoder_type: nn.Module
+    noise_dim: int = 4
+
+    def setup(self):
+        self.decoder = self.decoder_type()
+
     def __call__(self, cond, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
-        return DecoderBlock()(z, cond, training=training)
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 6 * 6, self.noise_dim))
+        return self.decoder(z, cond, training=training)
+
+    def gen(self, cond):
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 6 * 6, self.noise_dim))
+        return self.decoder(z, cond, training=False)
 
 
 def loss_fn(params, state, key, img, cond, model):
@@ -28,19 +36,17 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key,)
 
-    r_train, r_val, r_test, p_train, p_val, p_test = load('../../../data', 'standard')
+    r_train, r_val, r_test, p_train, p_val, p_test = load()
 
-    model = Decoder()
+    model = Generator(Decoder)
     params, state = init(model, init_key, p_train[:5], print_summary=True)
-
-    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))
-    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[1], False)[0])
+    generate_fn = jax.jit(default_generate_fn(model))
     train_metrics = ('loss',)
 
     train_loop(
         'decoder', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
-        train_metrics, None, params, state, opt_state, train_key, epochs=100, batch_size=128
+        train_metrics, None, params, state, opt_state, train_key
     )

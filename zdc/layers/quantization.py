@@ -13,7 +13,7 @@ class VectorQuantizer(nn.Module):
         self.codebook = nn.Embed(self.num_embeddings, self.embedding_dim)
 
         if self.projection_dim is not None:
-            self.projection = nn.Dense(self.projection_dim)
+            self.projection = nn.Dense(self.projection_dim, use_bias=False)
 
     @staticmethod
     def l2_normalize(x, axis=-1, eps=1e-12):
@@ -38,7 +38,7 @@ class VectorQuantizer(nn.Module):
         )
 
         discrete = jnp.argmin(distances, axis=1)
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
+        discrete = nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.codebook.embedding)
         quantized = quantized.reshape(x.shape[:-1] + (-1,))
 
@@ -58,12 +58,12 @@ class VectorQuantizerEMA(VectorQuantizer):
     def setup(self):
         self.codebook = self.variable(
             'state', 'codebook',
-            jax.nn.initializers.variance_scaling(1.0, 'fan_in', 'normal', out_axis=0),
+            nn.initializers.variance_scaling(1.0, 'fan_in', 'normal', out_axis=0),
             self.make_rng('zdc'), (self.num_embeddings, self.embedding_dim),
         )
         self.ema_count = self.variable(
             'state',  'ema_count',
-            jax.nn.initializers.zeros,
+            nn.initializers.zeros,
             jax.random.PRNGKey(0), self.num_embeddings
         )
         self.ema_weight = self.variable(
@@ -94,7 +94,7 @@ class VectorQuantizerEMA(VectorQuantizer):
         )
 
         discrete = jnp.argmin(distances, axis=1)
-        discrete = jax.nn.one_hot(discrete, self.num_embeddings)
+        discrete = nn.one_hot(discrete, self.num_embeddings)
         quantized = jnp.dot(discrete, self.codebook.value)
         quantized = quantized.reshape(x.shape)
 

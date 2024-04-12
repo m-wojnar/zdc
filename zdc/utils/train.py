@@ -23,14 +23,14 @@ def default_eval_fn(generated, *dataset):
 
 def default_generate_fn(model):
     def generate_fn(params, state, key, *x):
-        return forward(model, params, state, key, x[1])[0]
+        return forward(model, params, state, key, x[1], method='gen')[0]
 
     return generate_fn
 
 
 def train_loop(
         name, train_fn, eval_fn, generate_fn, train_dataset, val_dataset, test_dataset,
-        train_metrics, eval_metrics, params, state, opt_state, key, epochs, batch_size, n_rep=5
+        train_metrics, eval_metrics, params, state, opt_state, key, epochs=100, batch_size=256, n_rep=5, load_pdgid=False
 ):
     if eval_fn is None:
         eval_fn = default_eval_fn
@@ -40,7 +40,7 @@ def train_loop(
     os.makedirs(f'checkpoints/{name}', exist_ok=True)
 
     train_key, val_key, test_key, shuffle_key, plot_key = jax.random.split(key, 5)
-    samples = get_samples(*train_dataset)
+    samples = get_samples(load_pdgid=load_pdgid)
 
     for epoch in trange(epochs, desc='Epochs'):
         shuffle_key, shuffle_train_subkey, shuffle_val_subkey = jax.random.split(shuffle_key, 3)
