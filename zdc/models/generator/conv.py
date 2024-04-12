@@ -3,7 +3,8 @@ from functools import partial
 import jax
 from flax import linen as nn
 
-from zdc.models.autoencoder.variational import Decoder, optimizer
+from zdc.architectures.conv import Decoder, optimizer
+from zdc.layers import Concatenate, Reshape
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step
@@ -12,18 +13,24 @@ from zdc.utils.train import train_loop, default_generate_fn
 
 class Generator(nn.Module):
     decoder_type: nn.Module
-    noise_dim: int = 4
+    noise_dim: int = 10
+    hidden_dim: int = 64
 
     def setup(self):
+        self.concatenate = Concatenate()
+        self.post_latent = nn.Dense(6 * 6 * self.hidden_dim)
+        self.reshape = Reshape((6 * 6, self.hidden_dim))
         self.decoder = self.decoder_type()
 
     def __call__(self, cond, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 6 * 6, self.noise_dim))
-        return self.decoder(z, cond, training=training)
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.noise_dim))
+        z = self.concatenate(z, cond)
+        z = self.post_latent(z)
+        z = self.reshape(z)
+        return self.decoder(z, training=training)
 
     def gen(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 6 * 6, self.noise_dim))
-        return self.decoder(z, cond, training=False)
+        return self(cond, training=False)
 
 
 def loss_fn(params, state, key, img, cond, model):
