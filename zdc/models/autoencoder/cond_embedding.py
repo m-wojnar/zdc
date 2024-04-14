@@ -4,8 +4,9 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 
+from zdc.architectures.vit import Encoder, Decoder, optimizer
 from zdc.layers import Concatenate
-from zdc.models.autoencoder.variational import Encoder, Decoder, VAE, loss_fn, optimizer
+from zdc.models.autoencoder.variational import VAE, loss_fn
 from zdc.utils.data import load
 from zdc.utils.nn import init, gradient_step
 from zdc.utils.train import train_loop, default_generate_fn

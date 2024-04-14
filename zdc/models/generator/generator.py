@@ -54,6 +54,6 @@ if __name__ == '__main__':
     train_metrics = ('loss',)
 
     train_loop(
-        'decoder', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
+        'generator', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
         train_metrics, None, params, state, opt_state, train_key
     )

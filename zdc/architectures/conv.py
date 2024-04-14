@@ -1,22 +1,11 @@
-from functools import partial
-
 import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
 from zdc.layers import Concatenate, Reshape, UpSample
-from zdc.utils.nn import opt_with_cosine_schedule
 
 
-optimizer = opt_with_cosine_schedule(
-    optimizer=partial(optax.adam, b1=0.75, b2=0.78, eps=1.5e-10),
-    peak_value=6.9e-3,
-    pct_start=0.49,
-    div_factor=13,
-    final_div_factor=12,
-    epochs=100,
-    batch_size=256
-)
+optimizer = optax.adam(1.4e-3, b1=0.76, b2=0.88, eps=6.1e-8, nesterov=True)
 
 
 class ConvBlock(nn.Module):
