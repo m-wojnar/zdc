@@ -2,7 +2,8 @@ from functools import partial
 
 import jax
 
-from zdc.models.autoencoder.variational import Encoder, Decoder, VAE, optimizer
+from zdc.architectures.vit import Encoder, Decoder, optimizer
+from zdc.models.autoencoder.variational import VAE
 from zdc.utils.data import load
 from zdc.utils.losses import kl_loss, mse_loss, sinkhorn_loss
 from zdc.utils.nn import init, forward, gradient_step

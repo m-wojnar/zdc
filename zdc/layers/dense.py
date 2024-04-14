@@ -12,7 +12,7 @@ class DenseBlock(nn.Module):
         x = nn.Dense(self.features)(x)
 
         if self.use_bn:
-            x = nn.BatchNorm(use_running_average=not training)(x)
+            x = nn.BatchNorm()(x, use_running_average=not training)
         if self.dropout_rate is not None:
             x = nn.Dropout(self.dropout_rate, deterministic=not training)(x)
         if self.negative_slope is not None:

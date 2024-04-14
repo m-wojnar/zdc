@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax.numpy as jnp
 import optax
 from flax import linen as nn
@@ -6,7 +8,15 @@ from zdc.layers import Concatenate, Patches, PatchEncoder, Reshape, TransformerB
 from zdc.utils.nn import opt_with_cosine_schedule
 
 
-optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
+optimizer = opt_with_cosine_schedule(
+    optimizer=partial(optax.adamw, b1=0.64, b2=0.73, eps=1.5e-7, weight_decay=0.068),
+    peak_value=3.5e-3,
+    pct_start=0.32,
+    div_factor=35,
+    final_div_factor=770,
+    epochs=100,
+    batch_size=256
+)
 
 
 class Encoder(nn.Module):

@@ -1,15 +1,14 @@
 from functools import partial
 
 import jax
-import optax
 from flax import linen as nn
 
-from zdc.layers import DenseBlock, Reshape
+from zdc.layers import DenseBlock, Flatten, Reshape
 from zdc.models import PARTICLE_SHAPE
-from zdc.models.quantization.vq_vae import loss_fn, VQVAE
+from zdc.models.quantization.vq_vae import VQVAE, loss_fn, optimizer
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
-from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
+from zdc.utils.nn import init, forward, gradient_step
 from zdc.utils.train import train_loop
 
 
@@ -33,11 +32,11 @@ class Decoder(nn.Module):
 
     @nn.compact
     def __call__(self, z, training=True):
-        x = Reshape((self.latent_dim * self.embedding_dim,))(z)
+        x = Flatten()(z)
         x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
         x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
         x = DenseBlock(self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(*PARTICLE_SHAPE, negative_slope=0.2)(x)
+        x = DenseBlock(*PARTICLE_SHAPE)(x)
         return x
 
 
@@ -54,8 +53,6 @@ if __name__ == '__main__':
 
     model = VQVAE(Encoder, Decoder, embedding_dim=64, projection_dim=16)
     params, state = init(model, init_key, p_train[:5], print_summary=True)
-
-    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))

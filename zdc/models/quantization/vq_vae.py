@@ -2,14 +2,26 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import optax
 from flax import linen as nn
 
-from zdc.architectures.vit import Encoder, Decoder, optimizer
+from zdc.architectures.vit import Encoder, Decoder
 from zdc.layers import VectorQuantizer
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
-from zdc.utils.nn import init, forward, gradient_step
+from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule
 from zdc.utils.train import train_loop
+
+
+optimizer = opt_with_cosine_schedule(
+    optimizer=partial(optax.adamw, b1=0.71, b2=0.88, eps=6.7e-9, weight_decay=0.031),
+    peak_value=1.7e-3,
+    pct_start=0.1,
+    div_factor=22,
+    final_div_factor=44,
+    epochs=100,
+    batch_size=256
+)
 
 
 class VQVAE(nn.Module):

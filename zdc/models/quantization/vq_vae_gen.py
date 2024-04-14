@@ -12,6 +12,11 @@ from zdc.utils.nn import forward, load_model
 from zdc.utils.train import default_eval_fn
 
 
+def select_top_k(logits, k):
+    masked = jnp.argsort(logits, axis=-1)[:, :-k]
+    return logits.at[jnp.arange(logits.shape[0])[:, None], masked].set(-jnp.inf)
+
+
 def select_top_p(logits, p):
     sorted_logits = jnp.sort(logits, axis=-1, kind='stable')
     sorted_indices = jnp.argsort(logits, axis=-1, kind='stable')
@@ -24,14 +29,16 @@ def select_top_p(logits, p):
     return output
 
 
-def generate_prior_fn(model, params, state, cache, key, c, temperature=1.0, top_p=None):
+def generate_prior_fn(model, params, state, cache, key, c, temperature=1.0, top_k=None, top_p=None):
     state['cache'] = cache
 
     for i in range(c.shape[1]):
         key, subkey = jax.random.split(key)
         logits, state = forward(model, params, state, subkey, c[:, i][:, None], None, False)
 
-        if top_p is not None:
+        if top_k is not None:
+            logits = select_top_k(logits, top_k)
+        elif top_p is not None:
             logits = select_top_p(logits, top_p)
 
     key, subkey = jax.random.split(key)
@@ -44,7 +51,9 @@ def generate_prior_fn(model, params, state, cache, key, c, temperature=1.0, top_
         key, subkey_forward, subkey_categorical = jax.random.split(key, 3)
         logits, state = forward(model, params, state, subkey_forward, None, next_token, False)
 
-        if top_p is not None:
+        if top_k is not None:
+            logits = select_top_k(logits, top_k)
+        elif top_p is not None:
             logits = select_top_p(logits, top_p)
 
         next_token = jax.random.categorical(subkey_categorical, logits / temperature, axis=-1)

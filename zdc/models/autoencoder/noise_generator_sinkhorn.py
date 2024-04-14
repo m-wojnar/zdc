@@ -3,7 +3,8 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-from zdc.models.autoencoder.noise_generator_mse import AutoencoderNG, Encoder, Decoder, optimizer
+from zdc.architectures.vit import Encoder, Decoder, optimizer
+from zdc.models.autoencoder.noise_generator_mse import AutoencoderNG
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss, sinkhorn_loss
 from zdc.utils.nn import init, forward, gradient_step
