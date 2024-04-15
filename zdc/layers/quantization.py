@@ -53,6 +53,7 @@ class VectorQuantizerEMA(VectorQuantizer):
     embedding_dim: int
     decay: float = 0.99
     epsilon: float = 1e-5
+    projection_dim: int = None
     normalize: bool = False
 
     def setup(self):
@@ -71,6 +72,9 @@ class VectorQuantizerEMA(VectorQuantizer):
             lambda: self.codebook.value
         )
 
+        if self.projection_dim is not None:
+            self.projection = nn.Dense(self.projection_dim, use_bias=False)
+
     def update_embeddings(self, ema_count, ema_weight, discrete, x_flatten):
         ema_count = ema_count * self.decay + jnp.sum(discrete, axis=0) * (1 - self.decay)
         n = jnp.sum(ema_count)
@@ -82,6 +86,10 @@ class VectorQuantizerEMA(VectorQuantizer):
     def __call__(self, x, training=True):
         x_flatten = x.reshape(-1, self.embedding_dim)
         codebook = self.codebook.value
+
+        if self.projection_dim is not None:
+            x_flatten = self.projection(x_flatten)
+            codebook = self.projection(codebook)
 
         if self.normalize:
             x_flatten = self.l2_normalize(x_flatten)
@@ -103,7 +111,7 @@ class VectorQuantizerEMA(VectorQuantizer):
 
         if training:
             self.ema_count.value, self.ema_weight.value, self.codebook.value = jax.lax.stop_gradient(
-                self.update_embeddings(self.ema_count.value, self.ema_weight.value, discrete, x_flatten)
+                self.update_embeddings(self.ema_count.value, self.ema_weight.value, discrete, x.reshape(-1, self.embedding_dim))
             )
 
         return discrete, quantized
