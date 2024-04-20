@@ -14,6 +14,17 @@ from zdc.utils.nn import init, forward, gradient_step, opt_with_cosine_schedule,
 from zdc.utils.train import train_loop
 
 
+optimizer = opt_with_cosine_schedule(
+    optimizer=partial(optax.adamw, b1=0.80, b2=0.65, eps=1.7e-9, nesterov=True, weight_decay=0.33),
+    peak_value=3.6e-3,
+    pct_start=0.21,
+    div_factor=390,
+    final_div_factor=600,
+    epochs=100,
+    batch_size=256
+)
+
+
 class Transformer(nn.Module):
     vocab_size: int
     seq_len: int
@@ -43,11 +54,11 @@ class Transformer(nn.Module):
 
 
 class VQPrior(nn.Module):
-    vocab_size: int = 512
+    vocab_size: int = 256
     seq_len: int = 6 * 6 - 1
     hidden_dim: int = 256
     num_heads: int = 4
-    num_layers: int = 4
+    num_layers: int = 5
     drop_rate: float = 0.1
     decode: bool = False
 
@@ -132,7 +143,7 @@ if __name__ == '__main__':
     batch_size = 256
 
     vq_vae = VQVAE(ImgEncoder, ImgDecoder)
-    vq_vae_cond = VQVAE(CondEncoder, CondDecoder)
+    vq_vae_cond = VQVAE(CondEncoder, CondDecoder, embedding_dim=64, projection_dim=16)
     vq_vae_variables = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
     vq_vae_cond_variables = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
 
@@ -150,8 +161,6 @@ if __name__ == '__main__':
     model, model_gen = VQPrior(), VQPrior(decode=True)
     params, state = init(model, init_key, c_train[:5], x_train[:5], print_summary=True)
     cache = model_gen.init({'params': jax.random.PRNGKey(0)}, None, jnp.zeros((batch_size, y_train.shape[1]), dtype=int))['cache']
-
-    optimizer = opt_with_cosine_schedule(optax.adam, 3e-4)
     opt_state = optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=optimizer, loss_fn=partial(loss_fn, model=model)))

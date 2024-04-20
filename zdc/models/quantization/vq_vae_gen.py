@@ -69,7 +69,7 @@ def generate_fn(key, x, c, vq_vae, vq_vae_prior):
 
     cache = vq_vae_prior.init({'params': jax.random.PRNGKey(0)}, None, jnp.zeros((c.shape[0], 6 * 6 + c.shape[1] - 1), dtype=int))['cache']
     generated = generate_prior_fn(vq_vae_prior, *vq_vae_prior_variables, cache, prior_key, c)
-    generated, _ = forward(vq_vae, *vq_vae_variables, decoder_key, generated)
+    generated, _ = forward(vq_vae, *vq_vae_variables, decoder_key, generated, method='gen')
 
     return generated
 
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     n_rep = 5
 
     vq_vae = VQVAE(ImgEncoder, ImgDecoder)
-    vq_vae_cond = VQVAE(CondEncoder, CondDecoder)
+    vq_vae_cond = VQVAE(CondEncoder, CondDecoder, embedding_dim=64, projection_dim=16)
     vq_vae_prior = VQPrior(decode=True)
     vq_vae_variables = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
     vq_vae_cond_variables = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
