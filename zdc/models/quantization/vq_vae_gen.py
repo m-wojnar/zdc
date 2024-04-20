@@ -13,18 +13,22 @@ from zdc.utils.train import default_eval_fn
 
 
 def select_top_k(logits, k):
-    masked = jnp.argsort(logits, axis=-1)[..., :-k]
-    return logits.at[jnp.arange(logits.shape[0])[:, None], masked].set(-jnp.inf)
+    indices = jnp.argsort(logits, axis=-1)[..., :-k]
+    i, j, _ = jnp.ogrid[:logits.shape[0], :logits.shape[1], :logits.shape[2]]
+    mask = jnp.zeros_like(logits, dtype=bool)
+    mask = mask.at[i, j, indices].set(True)
+    return jnp.where(mask, -jnp.inf, logits)
 
 
 def select_top_p(logits, p):
     sorted_logits = jnp.sort(logits, axis=-1, kind='stable')
     sorted_indices = jnp.argsort(logits, axis=-1, kind='stable')
     cumulative_probs = jnp.cumsum(jax.nn.softmax(sorted_logits, axis=-1), axis=-1)
+    masked = jnp.where(cumulative_probs > (1 - p), sorted_logits, -jnp.inf)
 
-    masked = jnp.where(cumulative_probs < p, sorted_logits, -jnp.inf)
+    i, j, _ = jnp.ogrid[:logits.shape[0], :logits.shape[1], :logits.shape[2]]
     output = jnp.empty_like(masked)
-    output = output.at[jnp.arange(logits.shape[0])[:, None], sorted_indices].set(masked)
+    output = output.at[i, j, sorted_indices].set(masked)
 
     return output
 
