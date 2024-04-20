@@ -13,7 +13,7 @@ from zdc.utils.train import default_eval_fn
 
 
 def select_top_k(logits, k):
-    masked = jnp.argsort(logits, axis=-1)[:, :-k]
+    masked = jnp.argsort(logits, axis=-1)[..., :-k]
     return logits.at[jnp.arange(logits.shape[0])[:, None], masked].set(-jnp.inf)
 
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     vq_vae_prior = VQPrior(decode=True)
     vq_vae_variables = load_model('checkpoints/vq_vae/epoch_100.pkl.lz4')
     vq_vae_cond_variables = load_model('checkpoints/vq_vae_cond/epoch_100.pkl.lz4')
-    vq_vae_prior_variables = load_model('checkpoints/vq_vae_prior/epoch_25.pkl.lz4')
+    vq_vae_prior_variables = load_model('checkpoints/vq_vae_prior/epoch_100.pkl.lz4')
 
     vq_vae_cond_fn = jax.jit(lambda *args: forward(vq_vae_cond, *vq_vae_cond_variables, *args, False)[0][2])
 

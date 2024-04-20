@@ -3,7 +3,9 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import optax
+from lpips_j.lpips import LPIPS
 
+from zdc.models import RESPONSE_SHAPE
 from zdc.utils.wasserstein import wasserstein_channels
 
 
@@ -25,6 +27,19 @@ def wasserstein_loss(ch_true, ch_pred):
 
 def xentropy_loss(x, y):
     return optax.sigmoid_binary_cross_entropy(x, y).reshape(x.shape[0], -1).sum(axis=-1).mean()
+
+
+def perceptual_loss(shape=RESPONSE_SHAPE, max_val=6.4):
+    lpips = LPIPS()
+    x_sample = jnp.zeros((1, *shape))
+    params = lpips.init(jax.random.PRNGKey(0), x_sample, x_sample)
+
+    def apply(x, y):
+        x = 2 * (x / max_val) - 1
+        y = 2 * (y / max_val) - 1
+        return lpips.apply(params, x, y).mean()
+
+    return apply
 
 
 def sinkhorn_loss(diameter, blur, scaling):
