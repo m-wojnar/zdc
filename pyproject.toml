@@ -12,6 +12,7 @@ requires-python = ">=3.9"
 dependencies = [
   "cloudpickle~=3.0.0",
   "clu~=0.0.11",
+  "diffusers[training]~=0.27.2",
   "flax~=0.8.2",
   "jax~=0.4.25",
   "jaxlib~=0.4.25",
@@ -21,6 +22,7 @@ dependencies = [
   "optuna~=3.5.0",
   "seaborn~=0.13.2",
   "scikit-learn~=1.4.0",
+  "torch~=2.3.0",
   "tqdm~=4.66.2",
   "wandb~=0.16.3"
 ]
