@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from diffusers import DDIMPipeline, DDIMScheduler, ImagePipelineOutput, UNet2DConditionModel
-from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers.utils.torch_utils import randn_tensor
 from tqdm import trange
 
@@ -48,53 +47,39 @@ class DDIMConditionPipeline(DDIMPipeline):
         return ImagePipelineOutput(images=torch_to_numpy(image))
 
 
-def get_model(device):
-    return UNet2DConditionModel(
-        sample_size=RESPONSE_SHAPE[0],
-        in_channels=RESPONSE_SHAPE[-1],
-        out_channels=RESPONSE_SHAPE[-1],
-        layers_per_block=2,
-        block_out_channels=(16, 32, 64, 128),
-        down_block_types=(
-            'DownBlock2D',
-            'DownBlock2D',
-            'CrossAttnDownBlock2D',
-            'DownBlock2D',
-        ),
-        mid_block_type='UNetMidBlock2DCrossAttn',
-        up_block_types=(
-            'UpBlock2D',
-            'CrossAttnUpBlock2D',
-            'UpBlock2D',
-            'UpBlock2D',
-        ),
-        encoder_hid_dim=PARTICLE_SHAPE[0],
-        cross_attention_dim=32,
-        attention_head_dim=4,
-        norm_num_groups=8
-    ).to(device)
+model = UNet2DConditionModel(
+    sample_size=RESPONSE_SHAPE[0],
+    in_channels=RESPONSE_SHAPE[-1],
+    out_channels=RESPONSE_SHAPE[-1],
+    layers_per_block=2,
+    block_out_channels=(16, 32, 64, 128),
+    down_block_types=(
+        'DownBlock2D',
+        'DownBlock2D',
+        'CrossAttnDownBlock2D',
+        'DownBlock2D',
+    ),
+    mid_block_type='UNetMidBlock2DCrossAttn',
+    up_block_types=(
+        'UpBlock2D',
+        'CrossAttnUpBlock2D',
+        'UpBlock2D',
+        'UpBlock2D',
+    ),
+    encoder_hid_dim=PARTICLE_SHAPE[0],
+    cross_attention_dim=32,
+    attention_head_dim=4,
+    norm_num_groups=8
+)
+
+noise_scheduler = DDIMScheduler(num_train_timesteps=1000, clip_sample=True, clip_sample_range=7.0, timestep_spacing='trailing')
+optimizer = torch.optim.AdamW(model.parameters(), lr=1.7e-5, betas=(0.87, 0.82), eps=2.5e-10, weight_decay=5.5e-4)
 
 
-def get_noise_scheduler():
-    return DDIMScheduler(num_train_timesteps=1000, clip_sample=True, clip_sample_range=7.0, timestep_spacing='trailing')
+def train_loop(name, train_dataloader, val_dataloader, test_dataloader, generator, device, epochs=100, n_rep_val=1, n_rep_test=5):
+    print("Number of parameters:", model.num_parameters())
+    model.to(device)
 
-
-def get_optimizer(model, n_examples=214746, epochs=100, batch_size=256):
-    train_steps = epochs * n_examples // batch_size
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-2)
-    lr_scheduler = get_cosine_schedule_with_warmup(
-        optimizer=optimizer,
-        num_warmup_steps=int(0.2 * train_steps),
-        num_training_steps=train_steps
-    )
-    return optimizer, lr_scheduler
-
-
-def train_loop(
-        name, model, noise_scheduler, optimizer, lr_scheduler, train_dataloader, val_dataloader, test_dataloader,
-        generator, device, epochs=100, n_rep_val=1, n_rep_test=5
-):
     metrics = Metrics(job_type='train', name=name)
     os.makedirs(f'checkpoints/{name}', exist_ok=True)
 
@@ -116,13 +101,11 @@ def train_loop(
 
             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
             noise_pred = model(noisy_images, timesteps, cond, encoder_attention_mask=keep_cond).sample
-
             loss = F.mse_loss(noise_pred, noise)
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
             optimizer.step()
-            lr_scheduler.step()
 
             metrics.add({'mse_noise': loss.detach().item()}, 'train')
 
@@ -176,13 +159,4 @@ if __name__ == '__main__':
     val_dataloader = get_data_loader(r_val, p_val, eval_batch_size, generator, device, shuffle=True)
     test_dataloader = get_data_loader(r_test, p_test, eval_batch_size, generator, device, shuffle=False)
 
-    model = get_model(device)
-    noise_scheduler = get_noise_scheduler()
-    optimizer, lr_scheduler = get_optimizer(model, epochs=epochs, batch_size=train_batch_size)
-
-    print("Number of parameters:", model.num_parameters())
-
-    train_loop(
-        'diffusion', model, noise_scheduler, optimizer, lr_scheduler,
-        train_dataloader, val_dataloader, test_dataloader, generator, device, epochs
-    )
+    train_loop('diffusion', train_dataloader, val_dataloader, test_dataloader, generator, device, epochs)
