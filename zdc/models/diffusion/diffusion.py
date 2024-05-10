@@ -4,7 +4,7 @@ import jax
 import numpy as np
 import torch
 import torch.nn.functional as F
-from diffusers import DDIMPipeline, DDIMScheduler, ImagePipelineOutput, UNet2DConditionModel
+from diffusers import DDIMPipeline, DDIMScheduler, ImagePipelineOutput, UNet2DConditionModel, get_cosine_schedule_with_warmup
 from diffusers.utils.torch_utils import randn_tensor
 from tqdm import trange
 
@@ -17,7 +17,7 @@ from zdc.utils.train import default_eval_fn
 
 class DDIMConditionPipeline(DDIMPipeline):
     @torch.no_grad()
-    def __call__(self, cond, generator, num_inference_steps=50, eta=1.0, guidance_scale=1.0):
+    def __call__(self, cond, generator, num_inference_steps=50, eta=1.0):
         batch_size = cond.shape[0]
 
         image_shape = (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size)
@@ -25,19 +25,8 @@ class DDIMConditionPipeline(DDIMPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        if guidance_scale > 1.0:
-            cond = torch.cat([cond] * 2)
-            neg_mask = torch.zeros((batch_size, 1), device=self._execution_device)
-            pos_mask = torch.ones((batch_size, 1), device=self._execution_device)
-            attention_mask = torch.cat([neg_mask, pos_mask])
-
         for t in self.progress_bar(self.scheduler.timesteps):
-            if guidance_scale > 1.0:
-                model_output = self.unet(torch.cat([image] * 2), t, cond, encoder_attention_mask=attention_mask).sample
-                neg_output, pos_output = model_output.chunk(2)
-                model_output = (guidance_scale + 1.0) * pos_output - guidance_scale * neg_output
-            else:
-                model_output = self.unet(image, t, cond).sample
+            model_output = self.unet(image, t, cond).sample
 
             image = self.scheduler.step(
                 model_output, t, image, eta=eta, generator=generator, use_clipped_model_output=True
@@ -73,12 +62,20 @@ model = UNet2DConditionModel(
 )
 
 noise_scheduler = DDIMScheduler(num_train_timesteps=1000, clip_sample=True, clip_sample_range=7.0, timestep_spacing='trailing')
-optimizer = torch.optim.AdamW(model.parameters(), lr=1.7e-5, betas=(0.87, 0.82), eps=2.5e-10, weight_decay=5.5e-4)
+
+
+def get_optimizer(model, epochs, batch_size, n_examples=214746):
+    steps = epochs * n_examples // batch_size
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2.8e-5, betas=(0.87, 0.82), eps=2.5e-10, weight_decay=5.5e-4)
+    lr_scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=0.1 * steps, num_training_steps=steps)
+    return optimizer, lr_scheduler
 
 
 def train_loop(name, train_dataloader, val_dataloader, test_dataloader, generator, device, epochs=100, n_rep_val=1, n_rep_test=5):
     print("Number of parameters:", model.num_parameters())
     model.to(device)
+
+    optimizer, lr_scheduler = get_optimizer(model, epochs, len(train_dataloader))
 
     metrics = Metrics(job_type='train', name=name)
     os.makedirs(f'checkpoints/{name}', exist_ok=True)
@@ -97,15 +94,15 @@ def train_loop(name, train_dataloader, val_dataloader, test_dataloader, generato
 
             noise = torch.randn(clean_images.shape, generator=generator).to(device)
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (clean_images.shape[0],), generator=generator).to(device).long()
-            keep_cond = torch.rand((cond.shape[0], 1), generator=generator).to(device) > 0.15
 
             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
-            noise_pred = model(noisy_images, timesteps, cond, encoder_attention_mask=keep_cond).sample
+            noise_pred = model(noisy_images, timesteps, cond).sample
             loss = F.mse_loss(noise_pred, noise)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            lr_scheduler.step()
 
             metrics.add({'mse_noise': loss.detach().item()}, 'train')
 
