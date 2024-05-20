@@ -79,12 +79,7 @@ class GAN(nn.Module):
         fake_output = self.discriminator(generated, rand_cond, training=training)
         return generated, real_output, fake_output
 
-
-class GANGen(nn.Module):
-    def setup(self):
-        self.generator = Generator()
-
-    def __call__(self, cond):
+    def gen(self, cond):
         z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
         return self.generator(z, cond, training=False)
 
@@ -101,14 +96,14 @@ def gen_loss_fn(fake_output):
 
 def train_fn(params, carry, opt_state, model, disc_optimizer, gen_optimizer):
     def _disc_loss_fn(params, other_params, state):
-        (_, real_output, fake_output), state = forward(model, params | other_params, state, key, img, cond, rand_cond)
+        (_, real_output, fake_output), state = forward(model, params | other_params, state, forward_key, img, cond, rand_cond)
         loss = disc_loss_fn(real_output, fake_output)
         disc_real_acc = (real_output > 0).mean()
         disc_fake_acc = (fake_output < 0).mean()
         return loss, (state, loss, disc_real_acc, disc_fake_acc)
 
     def _gen_loss_fn(params, other_params, state):
-        (_, _, fake_output), state = forward(model, params | other_params, state, key, img, cond, rand_cond)
+        (_, _, fake_output), state = forward(model, params | other_params, state, forward_key, img, cond, rand_cond)
         loss = gen_loss_fn(fake_output)
         gen_acc = (fake_output > 0).mean()
         return loss, (state, loss, gen_acc)
@@ -132,7 +127,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load()
 
-    model, model_gen = GAN(), GANGen()
+    model = GAN()
     params, state = init(model, init_key, r_train[:5], p_train[:5], p_train[:5], print_summary=True)
 
     disc_optimizer = optax.adam(1e-4, b1=0.5, b2=0.9)
@@ -141,7 +136,7 @@ if __name__ == '__main__':
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
     train_fn = jax.jit(partial(train_fn, model=model, disc_optimizer=disc_optimizer, gen_optimizer=gen_optimizer))
-    generate_fn = jax.jit(default_generate_fn(model_gen))
+    generate_fn = jax.jit(default_generate_fn(model))
     train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
 
     train_loop(
