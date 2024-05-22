@@ -4,7 +4,7 @@ import jax
 from flax import linen as nn
 
 from zdc.architectures.vit import Encoder, Decoder, optimizer
-from zdc.layers import Concatenate, DenseBlock, Flatten, Reshape
+from zdc.layers import Concatenate, Flatten, Reshape
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
 from zdc.utils.nn import init, forward, gradient_step
@@ -17,12 +17,17 @@ class NoiseGenerator(nn.Module):
 
     @nn.compact
     def __call__(self, z, cond, training=True):
-        x1 = DenseBlock(2 * self.hidden_dim, negative_slope=0.2)(z)
-        x2 = DenseBlock(self.hidden_dim, negative_slope=0.2)(cond)
+        x1 = nn.Dense(2 * self.hidden_dim)(z)
+        x1 = nn.leaky_relu(x1, negative_slope=0.2)
+        x2 = nn.Dense(self.hidden_dim)(cond)
+        x2 = nn.leaky_relu(x2, negative_slope=0.2)
         x = Concatenate()(x1, x2)
-        x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
-        x = DenseBlock(4 * self.hidden_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.latent_dim, negative_slope=0.0)(x)
+        x = nn.Dense(4 * self.hidden_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(4 * self.hidden_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.latent_dim)(x)
+        x = nn.relu(x)
         return x
 
 

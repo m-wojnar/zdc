@@ -3,7 +3,7 @@ from functools import partial
 import jax
 from flax import linen as nn
 
-from zdc.layers import DenseBlock, Flatten, Reshape
+from zdc.layers import Flatten, Reshape
 from zdc.models import PARTICLE_SHAPE
 from zdc.models.quantization.vq_vae import VQVAE, loss_fn, optimizer
 from zdc.utils.data import load
@@ -18,10 +18,14 @@ class Encoder(nn.Module):
 
     @nn.compact
     def __call__(self, cond, training=True):
-        x = DenseBlock(self.embedding_dim, negative_slope=0.2)(cond)
-        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
+        x = nn.Dense(self.embedding_dim)(cond)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.latent_dim * self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.latent_dim * self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.latent_dim * self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
         x = Reshape((self.latent_dim, self.embedding_dim))(x)
         return x
 
@@ -33,10 +37,13 @@ class Decoder(nn.Module):
     @nn.compact
     def __call__(self, z, training=True):
         x = Flatten()(z)
-        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.latent_dim * self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(self.embedding_dim, negative_slope=0.2)(x)
-        x = DenseBlock(*PARTICLE_SHAPE)(x)
+        x = nn.Dense(self.latent_dim * self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.latent_dim * self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(self.embedding_dim)(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Dense(*PARTICLE_SHAPE)(x)
         return x
 
 

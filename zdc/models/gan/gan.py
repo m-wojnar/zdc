@@ -5,7 +5,8 @@ import jax.numpy as jnp
 import optax
 from flax import linen as nn
 
-from zdc.layers import Concatenate, DenseBlock, Flatten, Reshape, UpSample
+from zdc.architectures.vit import Encoder, Decoder
+from zdc.layers import Concatenate, Flatten, Reshape
 from zdc.utils.data import load
 from zdc.utils.losses import xentropy_loss
 from zdc.utils.nn import init, forward, gradient_step, get_layers, opt_with_cosine_schedule
@@ -33,42 +34,16 @@ gen_optimizer = opt_with_cosine_schedule(
 )
 
 
-class ConvBlock(nn.Module):
-    features: int
-    kernel_size: int = 3
-    strides: int = 1
-    padding: str = 'same'
-    use_bn: bool = False
-    dropout_rate: float = None
-    negative_slope: float = None
-    max_pool_size: int = None
-
-    @nn.compact
-    def __call__(self, x, training=True):
-        x = nn.Conv(self.features, kernel_size=(self.kernel_size, self.kernel_size), strides=(self.strides, self.strides), padding=self.padding)(x)
-
-        if self.use_bn:
-            x = nn.BatchNorm()(x, use_running_average=not training)
-        if self.dropout_rate is not None:
-            x = nn.Dropout(self.dropout_rate)(x, deterministic=not training)
-        if self.negative_slope is not None:
-            x = nn.leaky_relu(x, negative_slope=self.negative_slope)
-        if self.max_pool_size is not None:
-            pool_size = (self.max_pool_size, self.max_pool_size)
-            x = nn.max_pool(x, window_shape=pool_size, strides=pool_size)
-
-        return x
-
-
 class Discriminator(nn.Module):
     @nn.compact
     def __call__(self, img, cond, training=True):
-        x = ConvBlock(32, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1, max_pool_size=2)(img, training=training)
-        x = ConvBlock(16, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1, max_pool_size=2)(x, training=training)
+        x = Encoder(hidden_dim=128)(img, cond, training=training)
+        x = nn.Dense(128)(x)
         x = Flatten()(x)
-        x = Concatenate()(x, cond)
-        x = DenseBlock(128, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = DenseBlock(64, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
+        x = nn.Dense(128)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(64)(x)
+        x = nn.gelu(x)
         x = nn.Dense(1)(x)
         return x
 
@@ -77,14 +52,9 @@ class Generator(nn.Module):
     @nn.compact
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
-        x = DenseBlock(128 * 2, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = DenseBlock(128 * 13 * 13, use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = Reshape((13, 13, 128))(x)
-        x = UpSample()(x)
-        x = ConvBlock(128, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = UpSample()(x)
-        x = ConvBlock(64, kernel_size=3, padding='valid', use_bn=True, dropout_rate=0.2, negative_slope=0.1)(x, training=training)
-        x = ConvBlock(1, kernel_size=3, padding='valid', negative_slope=0.)(x, training=training)
+        x = nn.Dense(6 * 6 * 128)(x)
+        x = Reshape((6 * 6, 128))(x)
+        x = Decoder(hidden_dim=128)(x, cond, training=training)
         return x
 
 
