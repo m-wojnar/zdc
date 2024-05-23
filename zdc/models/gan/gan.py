@@ -35,9 +35,14 @@ gen_optimizer = opt_with_cosine_schedule(
 
 
 class Discriminator(nn.Module):
+    hidden_dim: int
+    num_heads: int
+    num_layers: int
+    drop_rate: float
+
     @nn.compact
     def __call__(self, img, cond, training=True):
-        x = Encoder(hidden_dim=128)(img, cond, training=training)
+        x = Encoder(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)(img, cond, training=training)
         x = nn.Dense(128)(x)
         x = Flatten()(x)
         x = nn.Dense(128)(x)
@@ -49,30 +54,44 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
+    hidden_dim: int
+    num_heads: int
+    num_layers: int
+    drop_rate: float
+
     @nn.compact
     def __call__(self, z, cond, training=True):
         x = Concatenate()(z, cond)
         x = nn.Dense(6 * 6 * 128)(x)
         x = Reshape((6 * 6, 128))(x)
-        x = Decoder(hidden_dim=128)(x, cond, training=training)
+        x = Decoder(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)(x, cond, training=training)
         return x
 
 
 class GAN(nn.Module):
+    hidden_dim: int = 128
+    num_heads: int = 4
+    num_layers: int = 4
+    drop_rate: float = 0.1
+    latent_dim: int = 10
+
     def setup(self):
-        self.discriminator = Discriminator()
-        self.generator = Generator()
+        self.discriminator = Discriminator(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
+        self.generator = Generator(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
 
     def __call__(self, img, cond, rand_cond, training=True):
-        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], 10))
+        z = jax.random.normal(self.make_rng('zdc'), (img.shape[0], self.latent_dim))
         generated = self.generator(z, rand_cond, training=training)
         real_output = self.discriminator(img, cond, training=training)
         fake_output = self.discriminator(generated, rand_cond, training=training)
         return generated, real_output, fake_output
 
     def gen(self, cond):
-        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], 10))
+        z = jax.random.normal(self.make_rng('zdc'), (cond.shape[0], self.latent_dim))
         return self.generator(z, cond, training=False)
+
+    def disc(self, img, cond):
+        return self.discriminator(img, cond, training=False)
 
 
 def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_cond, model):
