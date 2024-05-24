@@ -22,7 +22,7 @@ class AuxRegressor(nn.Module):
     drop_rate: float = 0.1
 
     @nn.compact
-    def __call__(self, img, cond, training=True):
+    def __call__(self, img, cond, _, training=True):
         x = Encoder(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)(img, cond, training=training)
         x = nn.Dense(128)(x)
         x = Flatten()(x)
@@ -34,8 +34,8 @@ class AuxRegressor(nn.Module):
         x = jnp.minimum(jnp.maximum(x, 0.), 44.)
         return x
 
-    def gen(self, img, cond):
-        return self(img, cond, training=False)
+    def gen(self, img, cond, _):
+        return self(img, cond, _, training=False)
 
 
 def eval_fn(pred, *dataset):
@@ -47,9 +47,9 @@ def eval_fn(pred, *dataset):
     return (loss,)
 
 
-def loss_fn(params, state, forward_key, img, cond, center, model):
-    pred, state = forward(model, params, state, forward_key, img, cond)
-    loss = eval_fn(pred, img, cond, center)[0]
+def loss_fn(params, state, forward_key, *x, model):
+    pred, state = forward(model, params, state, forward_key, *x)
+    loss = eval_fn(pred, *x)[0]
     return loss, (state, loss)
 
 
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     )
 
     model = AuxRegressor()
-    params, state = init(model, init_key, r_train[:5], p_train[:5], print_summary=True)
+    params, state = init(model, init_key, r_train[:5], p_train[:5], c_train[:5], print_summary=True)
     opt_state = disc_optimizer.init(params)
 
     train_fn = jax.jit(partial(gradient_step, optimizer=disc_optimizer, loss_fn=partial(loss_fn, model=model)))
