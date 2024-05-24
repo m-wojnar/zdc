@@ -73,7 +73,7 @@ def sdi_loss(diversity, z_1, z_2, embed_1, embed_2):
     return (diversity * dz / dG).mean()
 
 
-def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_cond, diversity, model, div_weight=0.1):
+def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_cond, diversity, model, div_weight=1.0):
     _, forward_key_2 = jax.random.split(forward_key)
 
     (_, z_1, _, _, fake_output, embed_1), state = forward(model, gen_params | disc_params, state, forward_key, img, cond, rand_cond)
