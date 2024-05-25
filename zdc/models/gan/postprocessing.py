@@ -15,7 +15,7 @@ if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     train_key, test_key, plot_key = jax.random.split(key, 3)
 
-    batch_size, n_rep = 256, 5
+    batch_size, n_rep_train, n_rep_test = 256, 1, 5
     r_train, _, r_test, p_train, _, p_test = load()
     r_sample, p_sample = get_samples()
 
@@ -27,13 +27,13 @@ if __name__ == '__main__':
     generated, original = [], []
 
     for batch in batches(r_train, p_train, batch_size=batch_size):
-        for _ in range(n_rep):
+        for _ in range(n_rep_train):
             train_key, subkey = jax.random.split(train_key)
             generated.append(generate_fn(params, state, subkey, *batch))
             original.append(batch)
 
-    generated, original = jnp.concatenate(generated), tuple(jnp.concatenate(xs) for xs in zip(*original))
-    ch_true, ch_pred = sum_channels_parallel(original[0]), sum_channels_parallel(generated)
+    generated, original = jnp.concatenate(generated), (jnp.concatenate(xs) for xs in (next(zip(*original)),))
+    ch_true, ch_pred = sum_channels_parallel(*original), sum_channels_parallel(generated)
 
     def objective_fn(c):
         return wasserstein_fn(ch_true, c * ch_pred)
@@ -41,12 +41,12 @@ if __name__ == '__main__':
     c_optim = minimize_scalar(objective_fn, bounds=(0.9, 1.1), method='bounded').x
     print(f'Optimal scaling factor: {c_optim:.3f}')
 
-    metrics = Metrics(job_type='train', name='gan_postprocessing')
+    metrics = Metrics(job_type='train', name='postprocessing_gan')
     eval_metrics = ('mse', 'mae', 'wasserstein')
     generated, original = [], []
 
     for batch in batches(r_test, p_test, batch_size=batch_size):
-        for _ in range(n_rep):
+        for _ in range(n_rep_test):
             test_key, subkey = jax.random.split(test_key)
             generated.append(c_optim * generate_fn(params, state, subkey, *batch))
             original.append(batch)
