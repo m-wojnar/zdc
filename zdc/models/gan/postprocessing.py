@@ -13,8 +13,7 @@ from zdc.utils.wasserstein import sum_channels_parallel
 
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
-    init_key, train_key = jax.random.split(key)
-    train_key, _, test_key, _, plot_key = jax.random.split(train_key, 5)
+    train_key, test_key, plot_key = jax.random.split(key, 3)
 
     batch_size, n_rep = 256, 5
     r_train, _, r_test, p_train, _, p_test = load()
@@ -31,10 +30,10 @@ if __name__ == '__main__':
         for _ in range(n_rep):
             train_key, subkey = jax.random.split(train_key)
             generated.append(generate_fn(params, state, subkey, *batch))
-            original.append(batch[0])
+            original.append(batch)
 
-    generated, original = jnp.concatenate(generated), jnp.concatenate(original)
-    ch_true, ch_pred = sum_channels_parallel(original), sum_channels_parallel(generated)
+    generated, original = jnp.concatenate(generated), tuple(jnp.concatenate(xs) for xs in zip(*original))
+    ch_true, ch_pred = sum_channels_parallel(original[0]), sum_channels_parallel(generated)
 
     def objective_fn(c):
         return wasserstein_fn(ch_true, c * ch_pred)
