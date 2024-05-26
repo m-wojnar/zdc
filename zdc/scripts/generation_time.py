@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
     end = time.perf_counter()
 
-    metrics = Metrics(job_type='train', name='time_gan')
+    metrics = Metrics(job_type='train', name='time_variational')
     metrics.add({
         'time': end - start,
         'n_samples': n_rep * len(p_test),
