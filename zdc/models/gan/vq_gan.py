@@ -6,11 +6,11 @@ import optax
 from flax import linen as nn
 
 from zdc.architectures.vit import Encoder, Decoder
-from zdc.models.gan.gan import Discriminator, step_fn
+from zdc.models.gan.gan import Discriminator
 from zdc.models.quantization.vq_vae import VQVAE
 from zdc.utils.data import load
 from zdc.utils.losses import mae_loss, mse_loss, perceptual_loss, xentropy_loss
-from zdc.utils.nn import init, forward, get_layers, opt_with_cosine_schedule
+from zdc.utils.nn import init, forward, get_layers, opt_with_cosine_schedule, gradient_step
 from zdc.utils.train import train_loop
 
 
@@ -48,8 +48,8 @@ class VQGAN(nn.Module):
         self.discriminator = Discriminator(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
         self.generator = VQVAE(self.vq_encoder_type, self.vq_decoder_type)
 
-    def __call__(self, img, cond, rand_cond, training=True):
-        reconstructed, encoded, discrete, quantized = self.generator(img, training=training)
+    def __call__(self, img, cond, rand_img, rand_cond, training=True):
+        reconstructed, encoded, discrete, quantized = self.generator(rand_img, training=training)
         real_output = self.discriminator(img, cond, training=training)
         fake_output = self.discriminator(reconstructed, rand_cond, training=training)
         return reconstructed, encoded, discrete, quantized, real_output, fake_output
@@ -61,8 +61,8 @@ class VQGAN(nn.Module):
         return self.generator.gen(discrete)
 
 
-def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_cond, model):
-    (*_, real_output, fake_output), state = forward(model, disc_params | gen_params, state, forward_key, img, cond, rand_cond)
+def disc_loss_fn(disc_params, gen_params, state, forward_key, *x, model):
+    (*_, real_output, fake_output), state = forward(model, disc_params | gen_params, state, forward_key, *x)
 
     real_loss = xentropy_loss(real_output, jnp.ones_like(real_output))
     fake_loss = xentropy_loss(fake_output, jnp.zeros_like(fake_output))
@@ -73,8 +73,9 @@ def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_co
     return loss, (state, loss, disc_real_acc, disc_fake_acc)
 
 
-def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_cond, model, perceptual_loss_fn, loss_weights, commitment_cost=0.25):
-    (generated, encoded, discrete, quantized, _, fake_output), state = forward(model, gen_params | disc_params, state, forward_key, img, cond, rand_cond)
+def gen_loss_fn(gen_params, disc_params, state, forward_key, *x, model, perceptual_loss_fn, loss_weights, commitment_cost=0.25):
+    (generated, encoded, discrete, quantized, _, fake_output), state = forward(model, gen_params | disc_params, state, forward_key, *x)
+    img, *_ = x
 
     e_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)
     q_loss = mse_loss(quantized, jax.lax.stop_gradient(encoded))
@@ -93,6 +94,23 @@ def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_con
     return loss, (state, loss, vq_loss, l1_loss, l2_loss, perc_loss, adv_loss, gen_acc)
 
 
+def step_fn(params, carry, opt_state, disc_optimizer, gen_optimizer, disc_loss_fn, gen_loss_fn):
+    state, key, img, cond = carry
+    disc_opt_state, gen_opt_state = opt_state
+    forward_key, data_key = jax.random.split(key)
+
+    disc_params, gen_params = get_layers(params, 'discriminator'), get_layers(params, 'generator')
+    permutation = jax.random.permutation(data_key, img.shape[0])
+    rand_img, rand_cond = img[permutation], cond[permutation]
+
+    disc_params_new, disc_opt_state, (_, *disc_losses) = gradient_step(
+        disc_params, (gen_params, state, forward_key, img, cond, rand_img, rand_cond), disc_opt_state, disc_optimizer, disc_loss_fn)
+    gen_params_new, gen_opt_state, (state, *gen_losses) = gradient_step(
+        gen_params, (disc_params, state, forward_key, img, cond, rand_img, rand_cond), gen_opt_state, gen_optimizer, gen_loss_fn)
+
+    return disc_params_new | gen_params_new, (disc_opt_state, gen_opt_state), (state, *disc_losses, *gen_losses)
+
+
 if __name__ == '__main__':
     key = jax.random.PRNGKey(42)
     init_key, train_key = jax.random.split(key)
@@ -100,7 +118,7 @@ if __name__ == '__main__':
     r_train, r_val, r_test, p_train, p_val, p_test = load()
 
     model = VQGAN(Encoder, Decoder)
-    params, state = init(model, init_key, r_train[:5], p_train[:5], p_train[:5], print_summary=True)
+    params, state = init(model, init_key, r_train[:5], p_train[:5], r_train[:5], p_train[:5], print_summary=True)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
 
