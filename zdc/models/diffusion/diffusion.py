@@ -17,7 +17,7 @@ from zdc.utils.train import default_eval_fn
 
 class DDIMConditionPipeline(DDIMPipeline):
     @torch.no_grad()
-    def __call__(self, cond, generator, num_inference_steps=50, eta=1.0):
+    def __call__(self, cond, generator, num_inference_steps=50, eta=0.7):
         batch_size = cond.shape[0]
 
         image_shape = (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size)

@@ -54,8 +54,11 @@ class VQGAN(nn.Module):
         fake_output = self.discriminator(reconstructed, rand_cond, training=training)
         return reconstructed, encoded, discrete, quantized, real_output, fake_output
 
-    def gen(self, img):
-        return self.generator(img, training=False)
+    def reconstruct(self, img):
+        return self.generator(img, training=False)[0]
+
+    def gen(self, discrete):
+        return self.generator.gen(discrete)
 
 
 def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_cond, model):
@@ -108,7 +111,7 @@ if __name__ == '__main__':
         disc_loss_fn=partial(disc_loss_fn, model=model),
         gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0., 0., 0., 1.))
     ))
-    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], method='gen')[0][0])
+    generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], method='reconstruct')[0])
     train_metrics = ('disc_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_loss', 'vq_loss', 'l1_loss', 'l2_loss', 'perc_loss', 'adv_loss', 'gen_acc')
 
     train_loop(
