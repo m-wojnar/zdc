@@ -65,7 +65,7 @@ if __name__ == '__main__':
         gen_loss_fn=partial(gen_loss_fn, model=model)
     ))
     generate_fn = jax.jit(default_generate_fn(model))
-    train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
+    train_metrics = ('disc_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_loss', 'gen_acc')
 
     train_loop(
         'gan_gp_annealed', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),

@@ -127,7 +127,7 @@ def train_loop(name, train_dataloader, val_dataloader, test_dataloader, generato
             metrics.plot_responses(samples[0], responses, epoch)
             metrics.log(epoch)
 
-            pipeline.save_pretrained(f'checkpoints/{name}/epoch_{epoch}')
+            pipeline.save_pretrained(f'checkpoints/{name}/epoch_{epoch + 1}')
 
     generated, original = [], []
 

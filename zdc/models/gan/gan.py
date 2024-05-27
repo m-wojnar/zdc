@@ -123,12 +123,12 @@ def step_fn(params, carry, opt_state, disc_optimizer, gen_optimizer, disc_loss_f
     disc_params, gen_params = get_layers(params, 'discriminator'), get_layers(params, 'generator')
     rand_cond = jax.random.permutation(data_key, cond)
 
-    disc_params_new, disc_opt_state, (_, disc_loss, disc_real_acc, disc_fake_acc) = gradient_step(
+    disc_params_new, disc_opt_state, (_, *disc_losses) = gradient_step(
         disc_params, (gen_params, state, forward_key, img, cond, rand_cond), disc_opt_state, disc_optimizer, disc_loss_fn)
-    gen_params_new, gen_opt_state, (state, gen_loss, gen_acc) = gradient_step(
+    gen_params_new, gen_opt_state, (state, *gen_losses) = gradient_step(
         gen_params, (disc_params, state, forward_key, img, cond, rand_cond), gen_opt_state, gen_optimizer, gen_loss_fn)
 
-    return disc_params_new | gen_params_new, (disc_opt_state, gen_opt_state), (state, disc_loss, gen_loss, disc_real_acc, disc_fake_acc, gen_acc)
+    return disc_params_new | gen_params_new, (disc_opt_state, gen_opt_state), (state, *disc_losses, *gen_losses)
 
 
 if __name__ == '__main__':
@@ -150,7 +150,7 @@ if __name__ == '__main__':
         gen_loss_fn=partial(gen_loss_fn, model=model)
     ))
     generate_fn = jax.jit(default_generate_fn(model))
-    train_metrics = ('disc_loss', 'gen_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_acc')
+    train_metrics = ('disc_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_loss', 'gen_acc')
 
     train_loop(
         'gan', train_fn, None, generate_fn, (r_train, p_train), (r_val, p_val), (r_test, p_test),
