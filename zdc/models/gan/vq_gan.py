@@ -6,7 +6,7 @@ import optax
 from flax import linen as nn
 
 from zdc.architectures.vit import Encoder, Decoder
-from zdc.models.gan.gan import Discriminator
+from zdc.layers import Flatten
 from zdc.models.quantization.vq_vae import VQVAE
 from zdc.utils.data import load
 from zdc.utils.losses import mae_loss, mse_loss, perceptual_loss, xentropy_loss
@@ -33,6 +33,24 @@ gen_optimizer = opt_with_cosine_schedule(
     epochs=100,
     batch_size=256
 )
+
+
+class Discriminator(nn.Module):
+    hidden_dim: int
+    num_heads: int
+    num_layers: int
+    drop_rate: float
+
+    @nn.compact
+    def __call__(self, img, cond, training=True):
+        x = Encoder(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)(img, cond, training=training)
+        x = nn.Dense(128)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(64)(x)
+        x = nn.gelu(x)
+        x = nn.Dense(1)(x)
+        x = Flatten()(x)
+        return x
 
 
 class VQGAN(nn.Module):
