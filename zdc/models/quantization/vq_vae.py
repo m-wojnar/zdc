@@ -27,6 +27,7 @@ optimizer = opt_with_cosine_schedule(
 class VQVAE(nn.Module):
     encoder_type: nn.Module
     decoder_type: nn.Module
+    quantizer_type: nn.Module = VectorQuantizer
     num_embeddings: int = 256
     embedding_dim: int = 256
     projection_dim: int = 32
@@ -35,7 +36,7 @@ class VQVAE(nn.Module):
     def setup(self):
         self.encoder = self.encoder_type()
         self.pre_embedding = nn.Dense(self.embedding_dim)
-        self.quantizer = VectorQuantizer(self.num_embeddings, self.embedding_dim, self.projection_dim, self.normalize)
+        self.quantizer = self.quantizer_type(num_embeddings=self.num_embeddings, embedding_dim=self.embedding_dim, projection_dim=self.projection_dim, normalize=self.normalize)
         self.post_embedding = nn.Dense(self.embedding_dim)
         self.decoder = self.decoder_type()
 

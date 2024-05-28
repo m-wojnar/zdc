@@ -6,7 +6,7 @@ import optax
 from flax import linen as nn
 
 from zdc.architectures.vit import Encoder, Decoder
-from zdc.layers import Flatten
+from zdc.layers import Flatten, VectorQuantizerEMA
 from zdc.models.quantization.vq_vae import VQVAE
 from zdc.utils.data import load
 from zdc.utils.losses import mae_loss, mse_loss, perceptual_loss, xentropy_loss
@@ -56,15 +56,18 @@ class Discriminator(nn.Module):
 class VQGAN(nn.Module):
     vq_encoder_type: nn.Module
     vq_decoder_type: nn.Module
+    quantizer_type: nn.Module
     hidden_dim: int = 128
     num_heads: int = 4
     num_layers: int = 4
     drop_rate: float = 0.1
     latent_dim: int = 10
+    projection_dim: int = None
+    normalize: bool = True
 
     def setup(self):
         self.discriminator = Discriminator(self.hidden_dim, self.num_heads, self.num_layers, self.drop_rate)
-        self.generator = VQVAE(self.vq_encoder_type, self.vq_decoder_type)
+        self.generator = VQVAE(self.vq_encoder_type, self.vq_decoder_type, self.quantizer_type, projection_dim=self.projection_dim, normalize=self.normalize)
 
     def __call__(self, img, cond, rand_img, rand_cond, training=True):
         reconstructed, encoded, discrete, quantized = self.generator(rand_img, training=training)
@@ -140,7 +143,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load()
 
-    model = VQGAN(Encoder, Decoder)
+    model = VQGAN(Encoder, Decoder, VectorQuantizerEMA)
     params, state = init(model, init_key, r_train[:5], p_train[:5], r_train[:5], p_train[:5], print_summary=True)
     disc_opt_state = disc_optimizer.init(get_layers(params, 'discriminator'))
     gen_opt_state = gen_optimizer.init(get_layers(params, 'generator'))
