@@ -70,9 +70,9 @@ class VQGAN(nn.Module):
         self.generator = VQVAE(self.vq_encoder_type, self.vq_decoder_type, self.quantizer_type, projection_dim=self.projection_dim, normalize=self.normalize)
 
     def __call__(self, img, cond, rand_img, rand_cond, training=True):
-        reconstructed, encoded, discrete, quantized = self.generator(rand_img, training=training)
-        real_output = self.discriminator(img, cond, training=training)
-        fake_output = self.discriminator(reconstructed, rand_cond, training=training)
+        reconstructed, encoded, discrete, quantized = self.generator(img, training=training)
+        real_output = self.discriminator(rand_img, rand_cond, training=training)
+        fake_output = self.discriminator(img, cond, training=training)
         return reconstructed, encoded, discrete, quantized, real_output, fake_output
 
     def reconstruct(self, img):
