@@ -79,12 +79,12 @@ class VQGAN(nn.Module):
         return self.generator.gen(discrete)
 
 
-def disc_loss_fn(disc_params, gen_params, state, forward_key, step, *x, model):
+def disc_loss_fn(disc_params, gen_params, state, forward_key, step, *x, model, adv_weight):
     (*_, real_output, fake_output), state = forward(model, disc_params | gen_params, state, forward_key, *x)
 
     disc_real_acc = (real_output > 0).mean()
     disc_fake_acc = (fake_output < 0).mean()
-    adv_weight = jax.lax.cond(step < 10000, lambda _: 0., lambda _: 1., None)
+    adv_weight = jax.lax.cond(step < 10000, lambda _: 0., lambda _: adv_weight, None)
 
     real_loss = xentropy_loss(real_output, jnp.ones_like(real_output))
     fake_loss = xentropy_loss(fake_output, jnp.zeros_like(fake_output))
@@ -149,7 +149,7 @@ if __name__ == '__main__':
         step_fn,
         disc_optimizer=disc_optimizer,
         gen_optimizer=gen_optimizer,
-        disc_loss_fn=partial(disc_loss_fn, model=model),
+        disc_loss_fn=partial(disc_loss_fn, model=model, adv_weight=1.0 / (6 ** 2)),
         gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0.1 / (44 ** 2), 1.0 / (44 ** 2), 0.1, 0.1 / (6 ** 2)))
     ))
     generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], method='reconstruct')[0])
