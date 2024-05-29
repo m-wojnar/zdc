@@ -15,13 +15,14 @@ if __name__ == '__main__':
 
     batch_size, n_rep = 256, 5
     _, _, r_test, _, _, p_test = load()
+    r_test, p_test = jax.tree.map(lambda x: x[:len(x) - len(x) % batch_size], (r_test, p_test))
 
     model = VAE(Encoder, Decoder)
     params, state = load_model('../models/autoencoder/checkpoints/variational/epoch_100.pkl.lz4')
     generate_fn = jax.jit(default_generate_fn(model))
 
     batch_sample = next(batches(r_test, p_test, batch_size=batch_size))
-    _ = generate_fn(params, state, test_key, *batch_sample)
+    generate_fn(params, state, test_key, *batch_sample).block_until_ready()
 
     start = time.perf_counter()
 
