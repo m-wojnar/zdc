@@ -55,7 +55,7 @@ class VQVAE(nn.Module):
 
     def gen(self, discrete):
         discrete = nn.one_hot(discrete, self.num_embeddings)
-        quantized = jnp.dot(discrete, self.quantizer.codebook.embedding)
+        quantized = self.quantizer.quantize(discrete)
         quantized = quantized.reshape(-1, 6 * 6, self.embedding_dim)
         quantized = VectorQuantizer.l2_normalize(quantized) if self.normalize else quantized
         quantized = self.post_embedding(quantized)

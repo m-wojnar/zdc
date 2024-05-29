@@ -78,6 +78,9 @@ class VQGAN(nn.Module):
     def reconstruct(self, img):
         return self.generator(img, training=False)[0]
 
+    def encode(self, img):
+        return self.generator(img, training=False)[2]
+
     def gen(self, discrete):
         return self.generator.gen(discrete)
 
