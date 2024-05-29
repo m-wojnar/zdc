@@ -96,14 +96,11 @@ def disc_loss_fn(disc_params, gen_params, state, forward_key, step, *x, model, a
     return loss, (state, loss, disc_real_acc, disc_fake_acc)
 
 
-def gen_loss_fn(gen_params, disc_params, state, forward_key, step, *x, model, perceptual_loss_fn, loss_weights, commitment_cost=0.25):
+def gen_loss_fn(gen_params, disc_params, state, forward_key, step, *x, model, perceptual_loss_fn, loss_weights):
     (generated, encoded, discrete, quantized, _, fake_output), state = forward(model, gen_params | disc_params, state, forward_key, *x)
     img, *_ = x
 
-    e_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)
-    q_loss = mse_loss(quantized, jax.lax.stop_gradient(encoded))
-    vq_loss = commitment_cost * e_loss + q_loss
-
+    vq_loss = mse_loss(jax.lax.stop_gradient(quantized), encoded)
     l1_loss = mae_loss(img, generated)
     l2_loss = mse_loss(img, generated)
     perc_loss = perceptual_loss_fn(img, generated)
@@ -113,9 +110,9 @@ def gen_loss_fn(gen_params, disc_params, state, forward_key, step, *x, model, pe
     avg_prob = jnp.mean(discrete, axis=0)
     perplexity = jnp.exp(-jnp.sum(avg_prob * jnp.log(avg_prob + 1e-10)))
 
-    l1_weight, l2_weight, perc_weight, adv_weight = loss_weights
+    commitment_cost, l1_weight, l2_weight, perc_weight, adv_weight = loss_weights
     adv_weight = jax.lax.cond(step < 10000, lambda _: 0., lambda _: adv_weight, None)
-    loss = vq_loss + l1_weight * l1_loss + l2_weight * l2_loss + perc_weight * perc_loss + adv_weight * adv_loss
+    loss = commitment_cost * vq_loss + l1_weight * l1_loss + l2_weight * l2_loss + perc_weight * perc_loss + adv_weight * adv_loss
 
     return loss, (state, loss, vq_loss, l1_loss, l2_loss, perc_loss, adv_loss, gen_acc, perplexity)
 
@@ -153,7 +150,7 @@ if __name__ == '__main__':
         disc_optimizer=disc_optimizer,
         gen_optimizer=gen_optimizer,
         disc_loss_fn=partial(disc_loss_fn, model=model, adv_weight=0.028),
-        gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0, 0.55, 0, 0.96))
+        gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0.25, 0, 0.55, 0, 0.96))
     ))
     generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], method='reconstruct')[0])
     train_metrics = ('disc_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_loss', 'vq_loss', 'l1_loss', 'l2_loss', 'perc_loss', 'adv_loss', 'gen_acc', 'perplexity')
