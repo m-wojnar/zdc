@@ -152,8 +152,8 @@ if __name__ == '__main__':
         step_fn,
         disc_optimizer=disc_optimizer,
         gen_optimizer=gen_optimizer,
-        disc_loss_fn=partial(disc_loss_fn, model=model, adv_weight=1.0 / (6 ** 2)),
-        gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0.1 / (44 ** 2), 1.0 / (44 ** 2), 0.1, 0.1 / (6 ** 2)))
+        disc_loss_fn=partial(disc_loss_fn, model=model, adv_weight=0.028),
+        gen_loss_fn=partial(gen_loss_fn, model=model, perceptual_loss_fn=perceptual_loss(), loss_weights=(0, 0.55, 0, 0.96))
     ))
     generate_fn = jax.jit(lambda params, state, key, *x: forward(model, params, state, key, x[0], method='reconstruct')[0])
     train_metrics = ('disc_loss', 'disc_real_acc', 'disc_fake_acc', 'gen_loss', 'vq_loss', 'l1_loss', 'l2_loss', 'perc_loss', 'adv_loss', 'gen_acc', 'perplexity')
