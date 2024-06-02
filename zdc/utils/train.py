@@ -14,11 +14,14 @@ from zdc.utils.wasserstein import sum_channels_parallel
 
 def default_eval_fn(generated, *dataset):
     img, *_ = dataset
-    mse = mse_loss(img, generated)
-    ch_true, ch_pred = sum_channels_parallel(img), sum_channels_parallel(generated)
+    img, generated = jnp.exp(img) - 1, jnp.exp(generated) - 1
+
+    rmse = jnp.sqrt(mse_loss(img, generated))
+    ch_true, ch_pred = sum_channels_parallel(img, apply_exp=False), sum_channels_parallel(generated, apply_exp=False)
     mae = mae_loss(ch_true, ch_pred) / 5
     wasserstein = wasserstein_loss(ch_true, ch_pred)
-    return mse, mae, wasserstein
+
+    return rmse, mae, wasserstein
 
 
 def default_generate_fn(model):
@@ -34,13 +37,15 @@ def train_loop(
 ):
     if eval_fn is None:
         eval_fn = default_eval_fn
-        eval_metrics = ('mse', 'mae', 'wasserstein')
+        eval_metrics = ('rmse', 'mae', 'wasserstein')
 
     metrics = Metrics(job_type='train', name=name)
     os.makedirs(f'checkpoints/{name}', exist_ok=True)
 
     train_key, val_key, test_key, shuffle_key, plot_key = jax.random.split(key, 5)
     samples = get_samples(load_pdgid=load_pdgid)
+
+    eval_fn = jax.jit(eval_fn)
 
     for epoch in trange(epochs, desc='Epochs'):
         shuffle_key, shuffle_train_subkey, shuffle_val_subkey = jax.random.split(shuffle_key, 3)
