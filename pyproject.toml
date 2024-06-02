@@ -1,8 +1,12 @@
 [project]
 name = "zdc"
 version = "0.1.0"
+requires-python = ">=3.9"
 
-keywords = []
+description = "Fast simulation of the Zero Degree Calorimeter responses with generative neural networks"
+keywords = ["generative neural networks", "fast simulations", "high-energy physics", "zero degree calorimeter"]
+readme = "README.md"
+license = {file = "LICENSE"}
 
 authors = [
   {name = "Maksymilian Wojnar", email = "mwojnar@agh.edu.pl"}
@@ -30,3 +34,6 @@ dependencies = [
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["zdc"]
