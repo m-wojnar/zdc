@@ -9,6 +9,7 @@ employing various generative frameworks such as autoencoders, generative adversa
 quantization, and diffusion models.
 
 ![Example Monte Carlo simulations](samples.png)
+
 *Example ZDC neuron detector simulations generated with GEANT software. The subsequent columns are the responses to 
 different particles, while the rows show independent runs for the same particles.*
 
