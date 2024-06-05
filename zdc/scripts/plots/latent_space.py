@@ -15,7 +15,7 @@ if __name__ == '__main__':
     colors = plt.colormaps.get_cmap('viridis')(np.linspace(0.1, 0.9, len(latent_size)))
     _, ax = plt.subplots(figsize=(0.8 * COLUMN_WIDTH, 0.8 * COLUMN_HIGHT))
 
-    plt.plot(latent_size, wasserstein, color='gray', linestyle='--', zorder=0)
+    plt.plot(latent_size, wasserstein, color='gray', zorder=0)
 
     for size, was, color in zip(latent_size, wasserstein, colors):
         ax.scatter(size, was, color=color, label=size, zorder=1, s=15)
