@@ -1,0 +1,2 @@
+beta_1,beta_2,cosine_decay,div_factor,epsilon,final_div_factor,learning_rate,nesterov,pct_start,use_weight_decay,weight_decay
+0.8691943943768884,0.8169677701758808,False,,2.4766260381768275e-10,,1.69134691430148e-05,,,True,0.0005521611128817114
