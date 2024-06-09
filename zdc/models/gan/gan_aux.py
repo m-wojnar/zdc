@@ -11,7 +11,7 @@ from zdc.utils.nn import init, forward, get_layers, load_model
 from zdc.utils.train import train_loop, default_generate_fn
 
 
-def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_cond, model, aux, aux_weight=1.0):
+def gen_loss_fn(gen_params, disc_params, state, forward_key, img, cond, rand_cond, model, aux, aux_weight=0.001):
     (generated, _, fake_output), state = forward(model, gen_params | disc_params, state, forward_key, img, cond, rand_cond)
 
     aux_key_img, aux_key_gen = jax.random.split(forward_key)

@@ -2,12 +2,11 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 from flax import linen as nn
-from scipy.ndimage import center_of_mass
 
 from zdc.architectures.vit import Encoder
 from zdc.layers import Flatten
+from zdc.models import RESPONSE_SHAPE
 from zdc.models.gan.gan import disc_optimizer
 from zdc.utils.data import load
 from zdc.utils.losses import mse_loss
@@ -59,7 +58,7 @@ if __name__ == '__main__':
 
     r_train, r_val, r_test, p_train, p_val, p_test = load()
     c_train, c_val, c_test = jax.tree_map(
-        lambda x: jnp.array([center_of_mass(np.array(x[i, ..., 0])) for i in range(x.shape[0])]),
+        lambda x: jnp.array([jnp.unravel_index(jnp.argmax(x[i].flatten()), (RESPONSE_SHAPE[:-1])) for i in range(x.shape[0])]),
         (r_train, r_val, r_test)
     )
 
