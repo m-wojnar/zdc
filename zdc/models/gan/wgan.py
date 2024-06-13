@@ -9,7 +9,7 @@ from zdc.utils.nn import init, forward, get_layers
 from zdc.utils.train import train_loop, default_generate_fn
 
 
-def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_cond, model):
+def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_cond, model, gp_weight=10.0):
     def vgrad(f, x):
         y, vjp_fn = jax.vjp(f, x)
         return vjp_fn(jnp.ones_like(y))[0]
@@ -19,11 +19,16 @@ def disc_loss_fn(disc_params, gen_params, state, forward_key, img, cond, rand_co
     real_loss = -jnp.mean(real_output)
     fake_loss = jnp.mean(fake_output)
 
-    grad = vgrad(lambda x: forward(model, disc_params, state, key, x, cond, method='disc')[0], generated)
-    gp = 1 - jnp.linalg.norm(jax.lax.collapse(grad, 1), axis=1)
+    _, eps_key = jax.random.split(forward_key)
+    eps = jax.random.uniform(eps_key, (img.shape[0], 1, 1, 1))
+    eps = jnp.broadcast_to(eps, img.shape)
+    inter = eps * img + (1 - eps) * generated
+
+    grad = vgrad(lambda x: forward(model, disc_params, state, key, x, cond, method='disc')[0], inter)
+    gp = jnp.linalg.norm(jax.lax.collapse(grad, 1), axis=1) - 1
     gp = jnp.mean(gp ** 2)
 
-    loss = real_loss + fake_loss + 10 * gp
+    loss = real_loss + fake_loss + gp_weight * gp
 
     disc_real_acc = (real_output > 0).mean()
     disc_fake_acc = (fake_output < 0).mean()
