@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
 from sklearn.manifold import TSNE
 
-from results.config import PLOT_PARAMS, COLUMN_WIDTH
+from zdc.scripts.plots import PLOT_PARAMS, COLUMN_WIDTH
 from zdc.utils.data import load
 
 
@@ -26,13 +26,17 @@ if __name__ == '__main__':
     plt.show()
 
     color = plt.colormaps.get_cmap('viridis')(0.25)
-    features = [r'$E$', r'$v_x$', r'$v_y$', r'$v_z$', r'$p_x$', r'$p_y$', r'$p_z$', r'$m$', r'$c$']
+    features = [
+        r'$E \left[ \text{GeV}\right] $', r'$v_x \left[ \text{m} \right]$', r'$v_y \left[ \text{m} \right]$', r'$v_z \left[ \text{m} \right]$',
+        r'$p_x \left[ \frac{\text{GeV}}{c}\right] $', r'$p_y \left[ \frac{\text{GeV}}{c}\right] $', r'$p_z \left[ \frac{\text{GeV}}{c}\right] $',
+        r'$m \left[ \frac{\text{MeV}}{c^2}\right] $', r'$c \left[ e \right] $'
+    ]
 
     *_, p_train, p_val, p_test = load(scaler='none')
     particles = jnp.concat([p_train, p_val, p_test])
     particles = jnp.unique(particles, axis=0)
 
-    _, axs = plt.subplots(3, 3, figsize=(COLUMN_WIDTH, COLUMN_WIDTH))
+    _, axs = plt.subplots(3, 3, figsize=(1.5 * COLUMN_WIDTH, 1.5 * COLUMN_WIDTH))
 
     for i, (ax, feature) in enumerate(zip(axs.flat, features)):
         ax.hist(particles[:, i], bins=100, color=color)
