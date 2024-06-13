@@ -15,6 +15,7 @@ PLOT_PARAMS = {
     'legend.fontsize': 7,
     'lines.linewidth': 0.5,
     'text.usetex': True,
+    'text.latex.preamble': r'\usepackage{amsmath}',
     'xtick.major.width': 0.5,
     'ytick.major.width': 0.5,
 }

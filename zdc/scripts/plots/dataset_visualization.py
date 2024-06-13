@@ -27,9 +27,9 @@ if __name__ == '__main__':
 
     color = plt.colormaps.get_cmap('viridis')(0.25)
     features = [
-        r'$E \left[ \text{GeV}\right] $', r'$v_x \left[ \text{m} \right]$', r'$v_y \left[ \text{m} \right]$', r'$v_z \left[ \text{m} \right]$',
-        r'$p_x \left[ \frac{\text{GeV}}{c}\right] $', r'$p_y \left[ \frac{\text{GeV}}{c}\right] $', r'$p_z \left[ \frac{\text{GeV}}{c}\right] $',
-        r'$m \left[ \frac{\text{MeV}}{c^2}\right] $', r'$c \left[ e \right] $'
+        r'$E \left[ \text{GeV} \right] $', r'$v_x \left[ \text{m} \right]$', r'$v_y \left[ \text{m} \right]$', r'$v_z \left[ \text{m} \right]$',
+        r'$p_x \left[ \frac{\text{GeV}}{c} \right] $', r'$p_y \left[ \frac{\text{GeV}}{c} \right] $', r'$p_z \left[ \frac{\text{GeV}}{c} \right] $',
+        r'$m \left[ \frac{\text{MeV}}{c^2} \right] $', r'$c \left[ e \right] $'
     ]
 
     *_, p_train, p_val, p_test = load(scaler='none')
