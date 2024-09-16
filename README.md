@@ -34,6 +34,8 @@ The repository contains implementations of the following generative models:
   -  Transformer as a learnable prior.
 - Diffusion:
   -  DDPM with DDIM sampling.
+- Normalizing Flows:
+  -  MAF-style flow based on RQS functions and MADE blocks. Code available [here](https://github.com/majerzemilia/zdc-fast-simulations).   
 
 ## Repository Structure
 
