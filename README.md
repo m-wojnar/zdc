@@ -59,9 +59,18 @@ specified versions of required libraries. All dependencies are listed in pyproje
 If you use this code in your research, please cite the following work:
 
 ```latex
-@article{wojnar2024fast,
-  title={Fast simulation of the Zero Degree Calorimeter responses with generative neural networks},
-  author={Maksymilian Wojnar and Emilia Majerz},
-  year={2024}
+@article{wojnar2025fast,
+  author={Wojnar, Maksymilian and Majerz, Emilia and Dzwinel, Witold},
+  title={{Fast Simulation of the Zero Degree Calorimeter Responses with Generative Neural Networks}},
+  journal={Computing and Software for Big Science},
+  year={2025},
+  month={Jan},
+  day={27},
+  volume={9},
+  number={1},
+  pages={1},
+  issn={2510-2044},
+  doi={10.1007/s41781-025-00130-x},
+  url={https://doi.org/10.1007/s41781-025-00130-x}
 }
 ```
